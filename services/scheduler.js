@@ -7,25 +7,25 @@ function startScheduler() {
   console.log('⏰ Scheduler Service đã khởi tạo (Kiểm tra nhắc nhở mỗi phút)...');
 
   cron.schedule('* * * * *', async () => {
-    const dueTasks = db.getDueTasksToRemind();
+    const dueTasks = await db.getDueTasksToRemind();
     if (dueTasks.length === 0) return;
 
     const bot = telegramBot.getBot();
-    const chatId = process.env.TELEGRAM_CHAT_ID || db.getSetting('TELEGRAM_CHAT_ID');
+    const chatId = process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID');
 
     for (const task of dueTasks) {
-      db.markTaskReminded(task.id);
+      await db.markTaskReminded(task.id);
 
       if (bot && chatId) {
         const priorityIcon = task.priority === 'high' ? '🚨 KHẨN CẤP' : task.priority === 'medium' ? '🟡 TRUNG BÌNH' : '🔵 THẤP';
         
         bot.sendMessage(chatId, 
-          `🔔 *NHẮC NHỞ CÔNG VIỆC ĐẾN HẠN!*
+          `⏰ *NHẮC NHỞ CÔNG VIỆC ĐẾN HẠN!*
 
 📌 *Tiêu đề:* ${task.title}
 🏷️ *Phân loại:* ${task.category}
-🎯 *Độ ưu tiên:* ${priorityIcon}
-⏰ *Hạn chót:* ${task.due_date || 'Không có'}
+🔥 *Độ ưu tiên:* ${priorityIcon}
+📅 *Hạn chót:* ${task.due_date || 'Không có'}
 📝 *Mô tả:* ${task.description || 'Không có'}`,
           {
             parse_mode: 'Markdown',
@@ -42,11 +42,16 @@ function startScheduler() {
 
   cron.schedule('0 8 * * *', async () => {
     const bot = telegramBot.getBot();
-    const chatId = process.env.TELEGRAM_CHAT_ID || db.getSetting('TELEGRAM_CHAT_ID');
+    const chatId = process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID');
     if (!bot || !chatId) return;
 
-    const todayTasks = db.getTodayTasks();
-    const overdueTasks = db.getOverdueTasks();
+    const allTasks = await db.getAllTasks();
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+    
+    const todayTasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
+    const overdueTasks = allTasks.filter(t => t.status !== 'done' && t.due_date && new Date(t.due_date) < now);
+
     const summaryMsg = await aiService.generateDailySummaryAlert(todayTasks, overdueTasks);
 
     bot.sendMessage(chatId, summaryMsg, { parse_mode: 'Markdown' })

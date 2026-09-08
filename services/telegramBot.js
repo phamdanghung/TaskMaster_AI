@@ -4,8 +4,8 @@ const aiService = require('./aiService');
 
 let bot = null;
 
-function initBot() {
-  const token = process.env.TELEGRAM_BOT_TOKEN || db.getSetting('TELEGRAM_BOT_TOKEN');
+async function initBot() {
+  const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN');
   if (!token || token.includes('your_telegram_bot_token')) {
     console.log('⚠️ Telegram Bot Token chưa được cấu hình. Vui lòng thêm token trong Cài đặt Web App hoặc file .env');
     return null;
@@ -15,18 +15,18 @@ function initBot() {
     bot = new TelegramBot(token, { polling: true });
     console.log('🤖 Telegram Bot đã khởi chạy thành công!');
 
-    bot.onText(/\/start/, (msg) => {
+    bot.onText(/\/start/, async (msg) => {
       const chatId = msg.chat.id;
-      db.setSetting('TELEGRAM_CHAT_ID', String(chatId));
+      await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
       const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3000';
 
       bot.sendMessage(chatId, 
-        `👋 *Cháu chào bác! TaskMaster AI đã sẵn sàng hỗ trợ bác.*
+        `👋 *Chào bạn! TaskMaster AI đã sẵn sàng hỗ trợ bạn.*
 
-📱 *Cách dùng cực kỳ đơn giản:*
+📌 *Cách dùng cực đơn giản:*
 1️⃣ Gửi tin nhắn tiếng Việt bất kỳ (VD: *"Nhắc tôi 15h chiều nay họp khẩn với đối tác"*).
-2️⃣ Nhắn lệnh /today để xem việc hôm nay.
-3️⃣ Nhắn lệnh /app để mở Web App trực tiếp trên điện thoại!`, 
+2️⃣ Nhấn lệnh /today để xem việc hôm nay.
+3️⃣ Nhấn lệnh /app để mở Web App trực tiếp trên điện thoại!`, 
         {
           parse_mode: 'Markdown',
           reply_markup: {
@@ -50,38 +50,38 @@ function initBot() {
       });
     });
 
-    bot.onText(/\/today/, async (msg) => { sendTodayTasks(msg.chat.id); });
-    bot.onText(/\/pending/, async (msg) => { sendPendingTasks(msg.chat.id); });
+    bot.onText(/\/today/, async (msg) => { await sendTodayTasks(msg.chat.id); });
+    bot.onText(/\/pending/, async (msg) => { await sendPendingTasks(msg.chat.id); });
 
     bot.on('callback_query', async (query) => {
       const chatId = query.message.chat.id;
       const data = query.data;
 
       if (data.startsWith('done_')) {
-        const taskId = parseInt(data.replace('done_', ''), 10);
-        db.markTaskDone(taskId);
+        const taskId = data.replace('done_', '');
+        await db.markTaskDone(taskId);
         bot.answerCallbackQuery(query.id, { text: '✅ Đã hoàn thành công việc!' });
-        bot.editMessageText(`✅ *Đã đánh dấu hoàn thành công việc #${taskId}!*`, {
+        bot.editMessageText(`✅ *Đã đánh dấu hoàn thành công việc!*`, {
           chat_id: chatId,
           message_id: query.message.message_id,
           parse_mode: 'Markdown'
         });
       } else if (data === 'cmd_today') {
-        sendTodayTasks(chatId);
+        await sendTodayTasks(chatId);
       } else if (data === 'cmd_pending') {
-        sendPendingTasks(chatId);
+        await sendPendingTasks(chatId);
       }
     });
 
     bot.on('message', async (msg) => {
       if (msg.text && !msg.text.startsWith('/')) {
         const chatId = msg.chat.id;
-        db.setSetting('TELEGRAM_CHAT_ID', String(chatId));
+        await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
 
         bot.sendMessage(chatId, '🧠 *AI đang phân tích công việc của bạn...*', { parse_mode: 'Markdown' });
 
         const parsed = await aiService.parseTaskFromText(msg.text);
-        const newTask = db.createTask(parsed);
+        const newTask = await db.createTask(parsed);
 
         const priorityIcon = newTask.priority === 'high' ? '🔴 Cao' : newTask.priority === 'medium' ? '🟡 Trung bình' : '🔵 Thấp';
 
@@ -90,9 +90,9 @@ function initBot() {
 
 📌 *Tiêu đề:* ${newTask.title}
 🏷️ *Phân loại:* ${newTask.category}
-🎯 *Độ ưu tiên:* ${priorityIcon}
-⏰ *Hạn chót:* ${newTask.due_date || 'Không cài đặt'}
-🔔 *Thời gian nhắc:* ${newTask.reminder_time || 'Không cài đặt'}`,
+🔥 *Độ ưu tiên:* ${priorityIcon}
+📅 *Hạn chót:* ${newTask.due_date || 'Không cài đặt'}
+⏰ *Thời gian nhắc:* ${newTask.reminder_time || 'Không cài đặt'}`,
           {
             parse_mode: 'Markdown',
             reply_markup: {
@@ -112,8 +112,11 @@ function initBot() {
   return bot;
 }
 
-function sendTodayTasks(chatId) {
-  const tasks = db.getTodayTasks();
+async function sendTodayTasks(chatId) {
+  const allTasks = await db.getAllTasks();
+  const today = new Date().toISOString().split('T')[0];
+  const tasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
+  
   if (tasks.length === 0) {
     bot.sendMessage(chatId, '🎉 *Hôm nay bạn không có công việc nào cần xử lý!*', { parse_mode: 'Markdown' });
     return;
@@ -134,8 +137,8 @@ function sendTodayTasks(chatId) {
   });
 }
 
-function sendPendingTasks(chatId) {
-  const tasks = db.getAllTasks({ status: 'todo' });
+async function sendPendingTasks(chatId) {
+  const tasks = await db.getAllTasks({ status: 'todo' });
   if (tasks.length === 0) {
     bot.sendMessage(chatId, '🎉 *Tất cả công việc đã được hoàn thành!*', { parse_mode: 'Markdown' });
     return;
@@ -146,7 +149,7 @@ function sendPendingTasks(chatId) {
 
   tasks.slice(0, 10).forEach((t, i) => {
     const icon = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '🔵';
-    msg += `${i + 1}. ${icon} *${t.title}*\n   🏷️ ${t.category} | ⏰ ${t.due_date || 'Không có hạn'}\n\n`;
+    msg += `${i + 1}. ${icon} *${t.title}*\n   🏷️ ${t.category} | 📅 ${t.due_date || 'Không có hạn'}\n\n`;
     keyboard.push([{ text: `✅ Xong: ${t.title.slice(0, 20)}`, callback_data: `done_${t.id}` }]);
   });
 

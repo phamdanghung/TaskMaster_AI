@@ -15,18 +15,18 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/tasks', (req, res) => {
+app.get('/api/tasks', async (req, res) => {
   try {
-    const tasks = db.getAllTasks(req.query);
+    const tasks = await db.getAllTasks(req.query);
     res.json({ success: true, tasks });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.get('/api/tasks/:id', (req, res) => {
+app.get('/api/tasks/:id', async (req, res) => {
   try {
-    const task = db.getTaskById(req.params.id);
+    const task = await db.getTaskById(req.params.id);
     if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
     res.json({ success: true, task });
   } catch (err) {
@@ -34,18 +34,18 @@ app.get('/api/tasks/:id', (req, res) => {
   }
 });
 
-app.post('/api/tasks', (req, res) => {
+app.post('/api/tasks', async (req, res) => {
   try {
-    const newTask = db.createTask(req.body);
+    const newTask = await db.createTask(req.body);
     res.json({ success: true, task: newTask });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.put('/api/tasks/:id', (req, res) => {
+app.put('/api/tasks/:id', async (req, res) => {
   try {
-    const updated = db.updateTask(req.params.id, req.body);
+    const updated = await db.updateTask(req.params.id, req.body);
     if (!updated) return res.status(404).json({ success: false, error: 'Task not found' });
     res.json({ success: true, task: updated });
   } catch (err) {
@@ -53,27 +53,27 @@ app.put('/api/tasks/:id', (req, res) => {
   }
 });
 
-app.post('/api/tasks/:id/done', (req, res) => {
+app.post('/api/tasks/:id/done', async (req, res) => {
   try {
-    const updated = db.markTaskDone(req.params.id);
+    const updated = await db.markTaskDone(req.params.id);
     res.json({ success: true, task: updated });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.delete('/api/tasks/:id', (req, res) => {
+app.delete('/api/tasks/:id', async (req, res) => {
   try {
-    const success = db.deleteTask(req.params.id);
+    const success = await db.deleteTask(req.params.id);
     res.json({ success });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.get('/api/stats', (req, res) => {
+app.get('/api/stats', async (req, res) => {
   try {
-    const stats = db.getStats();
+    const stats = await db.getStats();
     res.json({ success: true, stats });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -91,11 +91,11 @@ app.post('/api/parse-ai', async (req, res) => {
   }
 });
 
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', async (req, res) => {
   try {
-    const token = process.env.TELEGRAM_BOT_TOKEN || db.getSetting('TELEGRAM_BOT_TOKEN') || '';
-    const chatId = process.env.TELEGRAM_CHAT_ID || db.getSetting('TELEGRAM_CHAT_ID') || '';
-    const geminiKey = process.env.GEMINI_API_KEY || db.getSetting('GEMINI_API_KEY') || '';
+    const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || '';
+    const chatId = process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID') || '';
+    const geminiKey = process.env.GEMINI_API_KEY || await db.getSetting('GEMINI_API_KEY') || '';
 
     res.json({
       success: true,
@@ -111,31 +111,36 @@ app.get('/api/settings', (req, res) => {
   }
 });
 
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', async (req, res) => {
   try {
     const { telegram_token, telegram_chat_id, gemini_api_key } = req.body;
     if (telegram_token && !telegram_token.includes('...')) {
-      db.setSetting('TELEGRAM_BOT_TOKEN', telegram_token);
+      await db.saveSetting('TELEGRAM_BOT_TOKEN', telegram_token);
       process.env.TELEGRAM_BOT_TOKEN = telegram_token;
     }
     if (telegram_chat_id) {
-      db.setSetting('TELEGRAM_CHAT_ID', telegram_chat_id);
+      await db.saveSetting('TELEGRAM_CHAT_ID', telegram_chat_id);
       process.env.TELEGRAM_CHAT_ID = telegram_chat_id;
     }
     if (gemini_api_key && !gemini_api_key.includes('...')) {
-      db.setSetting('GEMINI_API_KEY', gemini_api_key);
+      await db.saveSetting('GEMINI_API_KEY', gemini_api_key);
       process.env.GEMINI_API_KEY = gemini_api_key;
     }
 
     telegramBot.initBot();
-    res.json({ success: true, message: 'Cấu hình đã được lưu thành công!' });
+    res.json({ success: true, message: 'Cấu hình được lưu thành công!' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 TaskMaster AI Server running at http://localhost:${PORT}`);
-  telegramBot.initBot();
-  scheduler.startScheduler();
-});
+// For Vercel Serverless we need to export the app
+module.exports = app;
+
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`🚀 TaskMaster AI Server running at http://localhost:${PORT}`);
+    telegramBot.initBot();
+    scheduler.startScheduler();
+  });
+}
