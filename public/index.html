@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>TaskMaster AI - Quản Lý Công Việc & Lịch Trình Smart</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#6366f1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Chart.js for statistics -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="logo-icon">⚡</div>
+        <div>
+          <h1>TaskMaster <span class="badge-ai">AI</span></h1>
+          <p class="subtitle" id="current-date-display">Đang tải ngày...</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btn-pwa-install" class="btn btn-secondary btn-icon" title="Cài đặt App" style="display: none;">
+          <span>📱 Cài App</span>
+        </button>
+        <button id="btn-open-settings" class="btn btn-secondary btn-icon" title="Cài đặt Telegram & Bot">
+          <span>⚙️ Cấu hình</span>
+        </button>
+        <button id="btn-toggle-theme" class="btn btn-secondary btn-icon" title="Đổi giao diện">
+          <span id="theme-icon">🌙</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Natural Language Quick AI Task Creator -->
+    <section class="ai-quick-input-section">
+      <div class="glass-card ai-input-card">
+        <div class="ai-input-wrapper">
+          <span class="ai-icon">✨</span>
+          <input type="text" id="ai-task-input" placeholder="Gõ hoặc nói: 'Nhắc tôi 14h chiều nay họp khẩn với đối tác'...">
+          <button id="btn-ai-parse" class="btn btn-primary btn-ai">
+            <span>Tạo nhanh bằng AI</span>
+          </button>
+        </div>
+        <p class="ai-hint">💡 Nhắn tin tự nhiên bằng tiếng Việt, Gemini AI sẽ tự trích xuất ngày, giờ, độ ưu tiên & tạo task!</p>
+      </div>
+    </section>
+
+    <!-- Stats & Overview Cards -->
+    <section class="stats-overview-section">
+      <div class="stat-card glass-card">
+        <div class="stat-icon total">📋</div>
+        <div class="stat-content">
+          <span class="stat-value" id="stat-total">0</span>
+          <span class="stat-label">Tổng số việc</span>
+        </div>
+      </div>
+
+      <div class="stat-card glass-card">
+        <div class="stat-icon high">🔴</div>
+        <div class="stat-content">
+          <span class="stat-value" id="stat-high">0</span>
+          <span class="stat-label">Ưu tiên cao</span>
+        </div>
+      </div>
+
+      <div class="stat-card glass-card warning-card" id="stat-overdue-card">
+        <div class="stat-icon overdue">⚠️</div>
+        <div class="stat-content">
+          <span class="stat-value" id="stat-overdue">0</span>
+          <span class="stat-label">Quá hạn!</span>
+        </div>
+      </div>
+
+      <div class="stat-card glass-card">
+        <div class="stat-icon done">✅</div>
+        <div class="stat-content">
+          <span class="stat-value" id="stat-done">0</span>
+          <span class="stat-label">Đã hoàn thành</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toolbar: Search & Filters & View Mode -->
+    <section class="toolbar-section">
+      <div class="search-box glass-card">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-input" placeholder="Tìm kiếm công việc...">
+      </div>
+
+      <div class="filter-group">
+        <select id="filter-priority" class="glass-select">
+          <option value="">🎯 Tất cả độ ưu tiên</option>
+          <option value="high">🔴 Cao (High)</option>
+          <option value="medium">🟡 Trung bình</option>
+          <option value="low">🔵 Thấp (Low)</option>
+        </select>
+
+        <select id="filter-category" class="glass-select">
+          <option value="">🏷️ Tất cả nhãn</option>
+          <option value="Công việc">💼 Công việc</option>
+          <option value="Lịch họp">📅 Lịch họp</option>
+          <option value="Cá nhân">🏠 Cá nhân</option>
+          <option value="Sức khỏe">❤️ Sức khỏe</option>
+          <option value="Khẩn cấp">🚨 Khẩn cấp</option>
+        </select>
+      </div>
+
+      <div class="view-switch-group glass-card">
+        <button class="btn-view active" data-view="list">📋 Danh sách</button>
+        <button class="btn-view" data-view="kanban">📊 Kanban</button>
+        <button class="btn-view" data-view="calendar">📅 Lịch biểu</button>
+      </div>
+    </section>
+
+    <!-- Main Content Area Views -->
+    <main class="main-content">
+      <!-- 1. List View -->
+      <div id="view-list" class="view-pane active">
+        <div class="tasks-grid" id="tasks-container">
+          <!-- Dynamic Task Cards Rendered Here -->
+        </div>
+      </div>
+
+      <!-- 2. Kanban View -->
+      <div id="view-kanban" class="view-pane">
+        <div class="kanban-board">
+          <div class="kanban-column" data-status="todo">
+            <div class="kanban-header todo-header">
+              <span>⏳ Cần làm (To-Do)</span>
+              <span class="kanban-count" id="kanban-todo-count">0</span>
+            </div>
+            <div class="kanban-list" id="kanban-todo-list"></div>
+          </div>
+
+          <div class="kanban-column" data-status="in_progress">
+            <div class="kanban-header progress-header">
+              <span>⚡ Đang làm (In Progress)</span>
+              <span class="kanban-count" id="kanban-progress-count">0</span>
+            </div>
+            <div class="kanban-list" id="kanban-progress-list"></div>
+          </div>
+
+          <div class="kanban-column" data-status="done">
+            <div class="kanban-header done-header">
+              <span>✅ Hoàn thành (Done)</span>
+              <span class="kanban-count" id="kanban-done-count">0</span>
+            </div>
+            <div class="kanban-list" id="kanban-done-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Calendar View -->
+      <div id="view-calendar" class="view-pane">
+        <div class="glass-card calendar-card">
+          <div class="calendar-header">
+            <button id="cal-prev" class="btn btn-secondary">&lt;</button>
+            <h3 id="cal-month-year">Tháng 9, 2026</h3>
+            <button id="cal-next" class="btn btn-secondary">&gt;</button>
+          </div>
+          <div class="calendar-grid" id="calendar-grid"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Floating Action Button (Add Task) -->
+    <button id="btn-fab-add" class="fab-button" title="Thêm việc mới">
+      <span>+</span>
+    </button>
+
+    <!-- Mobile Bottom Navigation Bar -->
+    <nav class="mobile-bottom-nav">
+      <button class="nav-item active" data-view="list">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">Việc làm</span>
+      </button>
+      <button class="nav-item" data-view="kanban">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Kanban</span>
+      </button>
+      <button class="nav-item" data-view="calendar">
+        <span class="nav-icon">📅</span>
+        <span class="nav-label">Lịch</span>
+      </button>
+      <button class="nav-item" id="nav-btn-settings">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">Cài đặt</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- MODAL: Add / Edit Task -->
+  <div id="modal-task" class="modal-overlay">
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <h3 id="modal-task-title">✨ Thêm Công Việc Mới</h3>
+        <button class="btn-close-modal" id="btn-close-task-modal">&times;</button>
+      </div>
+      <form id="form-task">
+        <input type="hidden" id="task-id">
+        <div class="form-group">
+          <label>Tiêu đề công việc <span class="required">*</span></label>
+          <input type="text" id="task-title-input" class="form-control" placeholder="VD: Họp báo cáo tiến độ tuần" required>
+        </div>
+
+        <div class="form-group">
+          <label>Mô tả chi tiết</label>
+          <textarea id="task-desc-input" class="form-control" rows="3" placeholder="Ghi chú nội dung công việc..."></textarea>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Phân loại / Nhãn</label>
+            <select id="task-category-input" class="form-control">
+              <option value="Công việc">💼 Công việc</option>
+              <option value="Lịch họp">📅 Lịch họp</option>
+              <option value="Cá nhân">🏠 Cá nhân</option>
+              <option value="Sức khỏe">❤️ Sức khỏe</option>
+              <option value="Khẩn cấp">🚨 Khẩn cấp</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Mức độ ưu tiên</label>
+            <select id="task-priority-input" class="form-control">
+              <option value="high">🔴 Cao (High)</option>
+              <option value="medium" selected>🟡 Trung bình (Medium)</option>
+              <option value="low">🔵 Thấp (Low)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Thời hạn hoàn thành (Deadline)</label>
+            <input type="datetime-local" id="task-due-input" class="form-control">
+          </div>
+
+          <div class="form-group">
+            <label>Thời gian nhắc nhở (Bot gửi Telegram)</label>
+            <input type="datetime-local" id="task-reminder-input" class="form-control">
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-task">Hủy bỏ</button>
+          <button type="submit" class="btn btn-primary">Lưu Công Việc</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Settings (Telegram & Gemini API) -->
+  <div id="modal-settings" class="modal-overlay">
+    <div class="modal-card glass-card">
+      <div class="modal-header">
+        <h3>⚙️ Cấu Hình Telegram Bot & Gemini AI</h3>
+        <button class="btn-close-modal" id="btn-close-settings-modal">&times;</button>
+      </div>
+      <form id="form-settings">
+        <div class="form-group">
+          <label>Telegram Bot Token (Từ @BotFather)</label>
+          <input type="text" id="setting-bot-token" class="form-control" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ">
+        </div>
+
+        <div class="form-group">
+          <label>Telegram Chat ID cá nhân</label>
+          <input type="text" id="setting-chat-id" class="form-control" placeholder="VD: 987654321">
+        </div>
+
+        <div class="form-group">
+          <label>Google Gemini AI API Key (Miễn phí)</label>
+          <input type="password" id="setting-gemini-key" class="form-control" placeholder="AIzaSy...">
+        </div>
+
+        <div class="settings-guide-card">
+          <h4>📖 Hướng dẫn nhanh kết nối Telegram Bot:</h4>
+          <ol>
+            <li>Mở Telegram, tìm bot <b>@BotFather</b> -> Gõ <code>/newbot</code> đặt tên để lấy Bot Token.</li>
+            <li>Tìm bot <b>@userinfobot</b> trên Telegram -> Gõ <code>/start</code> để xem Chat ID của bạn.</li>
+            <li>Dán Token & Chat ID vào 2 ô trên và bấm <b>Lưu cấu hình</b>.</li>
+          </ol>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" id="btn-cancel-settings">Đóng</button>
+          <button type="submit" class="btn btn-primary">Lưu Cấu Hình</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
