@@ -32,7 +32,7 @@ function getBotInstance(token) {
 📌 *Cách dùng cực đơn giản:*
 1️⃣ Gửi tin nhắn tiếng Việt bất kỳ (VD: *"Nhắc tôi 15h chiều nay họp khẩn với đối tác"*).
 2️⃣ Nhấn lệnh /today để xem việc hôm nay.
-3️⃣ Gửi tin nhắn bất kỳ để AI tự động tạo task cho bạn!`, 
+3️⃣ Gửi tin nhắn bất kỳ để AI tự động tạo task cho bạn!`,
       {
         parse_mode: 'Markdown',
         reply_markup: {
@@ -112,7 +112,7 @@ function getBotInstance(token) {
 
 async function initBot() {
   if (bot) {
-    try { bot.stop(); } catch (e) {}
+    try { bot.stop(); } catch (e) { }
     bot = null;
   }
 
@@ -144,7 +144,7 @@ async function sendTodayTasks(ctx) {
   const allTasks = await db.getAllTasks();
   const today = new Date().toISOString().split('T')[0];
   const tasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
-  
+
   if (tasks.length === 0) {
     await ctx.reply('🎉 *Hôm nay bạn không có công việc nào cần xử lý!*', { parse_mode: 'Markdown' });
     return;
