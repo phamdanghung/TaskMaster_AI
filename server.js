@@ -147,19 +147,38 @@ app.post('/api/telegram-webhook', async (req, res) => {
   }
 });
 
-app.post('/api/set-telegram-webhook', async (req, res) => {
+app.all('/api/set-telegram-webhook', async (req, res) => {
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN');
-    const { url } = req.body;
-    const webhookUrl = url || (process.env.WEB_APP_URL ? `${process.env.WEB_APP_URL}/api/telegram-webhook` : null);
+    const host = req.headers['x-forwarded-host'] || req.headers.host;
+    const protocol = req.headers['x-forwarded-proto'] || 'https';
+    const defaultUrl = `${protocol}://${host}/api/telegram-webhook`;
+    const webhookUrl = req.query.url || req.body?.url || (process.env.WEB_APP_URL ? `${process.env.WEB_APP_URL}/api/telegram-webhook` : defaultUrl);
 
-    if (!token || !webhookUrl) {
-      return res.status(400).json({ success: false, error: 'Token và Webhook URL HTTPS là bắt buộc' });
+    if (!token) {
+      return res.status(400).send(`
+        <div style="font-family: sans-serif; padding: 40px; text-align: center; background: #0f172a; color: white; min-height: 100vh;">
+          <h1 style="color: #ef4444;">⚠️ Chưa Cấu Hình Telegram Bot Token</h1>
+          <p>Vui lòng cài đặt <code>TELEGRAM_BOT_TOKEN</code> trong Environment Variables trên Vercel hoặc mục Cấu hình.</p>
+        </div>
+      `);
     }
 
     const instance = telegramBot.getBotInstance(token);
     await instance.api.setWebhook(webhookUrl);
-    res.json({ success: true, message: `✅ Đã đăng ký Webhook Telegram thành công tới: ${webhookUrl}` });
+
+    if (req.headers.accept && req.headers.accept.includes('text/html')) {
+      res.send(`
+        <div style="font-family: sans-serif; padding: 40px; text-align: center; background: #0f172a; color: white; min-height: 100vh;">
+          <h1 style="color: #10b981;">✅ Kích Hoạt Telegram Webhook Thành Công!</h1>
+          <p style="font-size: 1.1rem; color: #cbd5e1;">Webhook URL: <code style="color: #38bdf8;">${webhookUrl}</code></p>
+          <p style="color: #94a3b8; margin-top: 10px;">Bây giờ bạn có thể mở Telegram và gửi tin nhắn cho Bot ngay lập tức!</p>
+          <a href="/" style="display: inline-block; margin-top: 24px; padding: 12px 24px; background: #6366f1; color: white; border-radius: 8px; text-decoration: none; font-weight: bold;">Mở TaskMaster Web App</a>
+        </div>
+      `);
+    } else {
+      res.json({ success: true, message: `✅ Đã đăng ký Webhook Telegram thành công tới: ${webhookUrl}` });
+    }
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
