@@ -40,7 +40,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const aiTaskInput = document.getElementById('ai-task-input');
   const btnAiParse = document.getElementById('btn-ai-parse');
+  const btnVoiceInput = document.getElementById('btn-voice-input');
+  const voiceIcon = document.getElementById('voice-icon');
   const btnToggleTheme = document.getElementById('btn-toggle-theme');
+
+  // Web Speech API (Giọng nói tiếng Việt)
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (btnVoiceInput) {
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'vi-VN';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+
+      let isListening = false;
+
+      btnVoiceInput.addEventListener('click', () => {
+        if (isListening) {
+          recognition.stop();
+        } else {
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error('Speech recognition start error:', e);
+          }
+        }
+      });
+
+      recognition.onstart = () => {
+        isListening = true;
+        btnVoiceInput.classList.add('recording');
+        btnVoiceInput.title = 'Đang nghe giọng nói... Bấm để dừng';
+        if (voiceIcon) voiceIcon.textContent = '🔴';
+        showToast('🎙️ Đang lắng nghe giọng nói tiếng Việt...');
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (aiTaskInput) {
+          aiTaskInput.value = transcript;
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        if (event.error !== 'no-speech') {
+          showToast('⚠️ Lỗi giọng nói: ' + event.error);
+        }
+        stopListeningState();
+      };
+
+      recognition.onend = () => {
+        stopListeningState();
+        if (aiTaskInput && aiTaskInput.value.trim().length > 0) {
+          showToast('✨ Đã nhận diện giọng nói xong! Đang phân tích công việc bằng AI...');
+          handleAiParse();
+        }
+      };
+
+      function stopListeningState() {
+        isListening = false;
+        btnVoiceInput.classList.remove('recording');
+        btnVoiceInput.title = 'Nhập bằng giọng nói (Voice)';
+        if (voiceIcon) voiceIcon.textContent = '🎙️';
+      }
+    } else {
+      btnVoiceInput.addEventListener('click', () => {
+        alert('Trình duyệt của bạn không hỗ trợ tính năng Nhận Diện Giọng Nói (Web Speech API). Vui lòng dùng Google Chrome, Microsoft Edge hoặc Safari!');
+      });
+    }
+  }
 
   // Display Current Date
   const dateDisplay = document.getElementById('current-date-display');

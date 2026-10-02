@@ -134,6 +134,37 @@ app.post('/api/settings', async (req, res) => {
   }
 });
 
+app.post('/api/telegram-webhook', async (req, res) => {
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN');
+    if (token) {
+      await telegramBot.handleWebhookUpdate(req.body, token);
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Webhook processing error:', err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/set-telegram-webhook', async (req, res) => {
+  try {
+    const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN');
+    const { url } = req.body;
+    const webhookUrl = url || (process.env.WEB_APP_URL ? `${process.env.WEB_APP_URL}/api/telegram-webhook` : null);
+
+    if (!token || !webhookUrl) {
+      return res.status(400).json({ success: false, error: 'Token và Webhook URL HTTPS là bắt buộc' });
+    }
+
+    const instance = telegramBot.getBotInstance(token);
+    await instance.api.setWebhook(webhookUrl);
+    res.json({ success: true, message: `✅ Đã đăng ký Webhook Telegram thành công tới: ${webhookUrl}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // For Vercel Serverless we need to export the app
 module.exports = app;
 

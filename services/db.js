@@ -1,45 +1,93 @@
 const admin = require('firebase-admin');
+const { getFirestore } = require('firebase-admin/firestore');
+const fs = require('fs');
+const path = require('path');
 const dotenv = require('dotenv');
 dotenv.config();
 
-// Khởi tạo Firebase Admin
-if (!admin.apps.length) {
-  const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  let credential;
+const LOCAL_DB_PATH = path.join(__dirname, '../data/local_db.json');
 
-  if (serviceAccountStr) {
-    credential = admin.credential.cert(JSON.parse(serviceAccountStr));
-  } else if (process.env.FIREBASE_PROJECT_ID) {
-    credential = admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-    });
-  }
-
-  if (credential) {
-    admin.initializeApp({ credential });
-  } else {
-    console.warn("⚠️ Firebase credentials not found! Please set FIREBASE_SERVICE_ACCOUNT_KEY or FIREBASE_PROJECT_ID/EMAIL/KEY in .env");
+function ensureLocalDb() {
+  const dir = path.dirname(LOCAL_DB_PATH);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(LOCAL_DB_PATH)) {
+    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify({ tasks: [], settings: {} }, null, 2));
   }
 }
 
-const db = admin.apps.length ? admin.firestore() : null;
+function readLocalDb() {
+  ensureLocalDb();
+  try {
+    const raw = fs.readFileSync(LOCAL_DB_PATH, 'utf8');
+    return JSON.parse(raw);
+  } catch (err) {
+    return { tasks: [], settings: {} };
+  }
+}
+
+function writeLocalDb(data) {
+  ensureLocalDb();
+  fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(data, null, 2));
+}
+
+// Khởi tạo Firebase Admin nếu có cấu hình
+let db = null;
+try {
+  const apps = admin.getApps ? admin.getApps() : [];
+  if (!apps.length) {
+    const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+    let credential;
+
+    if (serviceAccountStr) {
+      try {
+        credential = admin.credential.cert(JSON.parse(serviceAccountStr));
+      } catch (e) {
+        console.error("⚠️ Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON:", e.message);
+      }
+    } else if (process.env.FIREBASE_PROJECT_ID) {
+      credential = admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+      });
+    }
+
+    if (credential) {
+      admin.initializeApp({ credential });
+    }
+  }
+
+  const activeApps = admin.getApps ? admin.getApps() : [];
+  if (activeApps.length) {
+    db = getFirestore();
+    console.log("🔥 Đã kết nối Firebase Firestore thành công!");
+  } else {
+    console.log("📁 Firebase chưa cấu hình. Đang sử dụng lưu trữ cục bộ (local_db.json)");
+  }
+} catch (err) {
+  console.warn("⚠️ Firebase init fallback:", err.message);
+}
 
 module.exports = {
   async getAllTasks(filters = {}) {
-    if (!db) return [];
-    let query = db.collection('tasks');
-    
-    if (filters.status) query = query.where('status', '==', filters.status);
-    if (filters.priority) query = query.where('priority', '==', filters.priority);
-    if (filters.category) query = query.where('category', '==', filters.category);
-
-    const snapshot = await query.get();
     let tasks = [];
-    snapshot.forEach(doc => {
-      tasks.push({ id: doc.id, ...doc.data() });
-    });
+    if (db) {
+      let query = db.collection('tasks');
+      if (filters.status) query = query.where('status', '==', filters.status);
+      if (filters.priority) query = query.where('priority', '==', filters.priority);
+      if (filters.category) query = query.where('category', '==', filters.category);
+
+      const snapshot = await query.get();
+      snapshot.forEach(doc => {
+        tasks.push({ id: doc.id, ...doc.data() });
+      });
+    } else {
+      const local = readLocalDb();
+      tasks = [...local.tasks];
+      if (filters.status) tasks = tasks.filter(t => t.status === filters.status);
+      if (filters.priority) tasks = tasks.filter(t => t.priority === filters.priority);
+      if (filters.category) tasks = tasks.filter(t => t.category === filters.category);
+    }
 
     tasks.sort((a, b) => {
       if (filters.sort === 'due_date') {
@@ -54,13 +102,16 @@ module.exports = {
   },
 
   async getTaskById(id) {
-    if (!db) return null;
-    const doc = await db.collection('tasks').doc(id).get();
-    return doc.exists ? { id: doc.id, ...doc.data() } : null;
+    if (db) {
+      const doc = await db.collection('tasks').doc(id).get();
+      return doc.exists ? { id: doc.id, ...doc.data() } : null;
+    } else {
+      const local = readLocalDb();
+      return local.tasks.find(t => t.id === id) || null;
+    }
   },
 
   async createTask(taskData) {
-    if (!db) throw new Error("Firebase not initialized");
     const now = new Date();
     const newTask = {
       title: taskData.title,
@@ -74,22 +125,38 @@ module.exports = {
       created_at: now.toISOString(),
       updated_at: now.toISOString()
     };
-    const ref = await db.collection('tasks').add(newTask);
-    return { id: ref.id, ...newTask };
+
+    if (db) {
+      const ref = await db.collection('tasks').add(newTask);
+      return { id: ref.id, ...newTask };
+    } else {
+      const local = readLocalDb();
+      newTask.id = 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+      local.tasks.push(newTask);
+      writeLocalDb(local);
+      return newTask;
+    }
   },
 
   async updateTask(id, taskData) {
-    if (!db) return null;
-    const ref = db.collection('tasks').doc(id);
-    const doc = await ref.get();
-    if (!doc.exists) return null;
-
     const updates = { ...taskData, updated_at: new Date().toISOString() };
     Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
 
-    await ref.update(updates);
-    const updatedDoc = await ref.get();
-    return { id: updatedDoc.id, ...updatedDoc.data() };
+    if (db) {
+      const ref = db.collection('tasks').doc(id);
+      const doc = await ref.get();
+      if (!doc.exists) return null;
+      await ref.update(updates);
+      const updatedDoc = await ref.get();
+      return { id: updatedDoc.id, ...updatedDoc.data() };
+    } else {
+      const local = readLocalDb();
+      const idx = local.tasks.findIndex(t => t.id === id);
+      if (idx === -1) return null;
+      local.tasks[idx] = { ...local.tasks[idx], ...updates };
+      writeLocalDb(local);
+      return local.tasks[idx];
+    }
   },
 
   async markTaskDone(id) {
@@ -97,27 +164,45 @@ module.exports = {
   },
 
   async deleteTask(id) {
-    if (!db) return false;
-    await db.collection('tasks').doc(id).delete();
-    return true;
+    if (db) {
+      await db.collection('tasks').doc(id).delete();
+      return true;
+    } else {
+      const local = readLocalDb();
+      const initialLen = local.tasks.length;
+      local.tasks = local.tasks.filter(t => t.id !== id);
+      writeLocalDb(local);
+      return local.tasks.length < initialLen;
+    }
   },
 
   async getDueTasksToRemind() {
-    if (!db) return [];
     const now = new Date();
     const tenMinsLater = new Date(now.getTime() + 10 * 60000);
-
-    const snapshot = await db.collection('tasks').where('status', '!=', 'done').get();
     const tasks = [];
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      if (!data.reminded && data.reminder_time) {
-        const remTime = new Date(data.reminder_time);
-        if (remTime > now && remTime <= tenMinsLater) {
-          tasks.push({ id: doc.id, ...data });
+
+    if (db) {
+      const snapshot = await db.collection('tasks').where('status', '!=', 'done').get();
+      snapshot.forEach(doc => {
+        const data = doc.data();
+        if (!data.reminded && data.reminder_time) {
+          const remTime = new Date(data.reminder_time);
+          if (remTime > now && remTime <= tenMinsLater) {
+            tasks.push({ id: doc.id, ...data });
+          }
         }
-      }
-    });
+      });
+    } else {
+      const local = readLocalDb();
+      local.tasks.filter(t => t.status !== 'done').forEach(data => {
+        if (!data.reminded && data.reminder_time) {
+          const remTime = new Date(data.reminder_time);
+          if (remTime > now && remTime <= tenMinsLater) {
+            tasks.push(data);
+          }
+        }
+      });
+    }
     return tasks;
   },
 
@@ -126,13 +211,11 @@ module.exports = {
   },
 
   async getStats() {
-    if (!db) return { total: 0, todo: 0, in_progress: 0, done: 0, high_priority: 0, overdue: 0 };
-    const snapshot = await db.collection('tasks').get();
     const stats = { total: 0, todo: 0, in_progress: 0, done: 0, high_priority: 0, overdue: 0 };
     const now = new Date();
+    const allTasks = await this.getAllTasks();
 
-    snapshot.forEach(doc => {
-      const t = doc.data();
+    allTasks.forEach(t => {
       stats.total++;
       if (t.status === 'todo') stats.todo++;
       if (t.status === 'in_progress') stats.in_progress++;
@@ -144,21 +227,35 @@ module.exports = {
   },
 
   async getSetting(key) {
-    if (!db) return null;
-    const doc = await db.collection('settings').doc('bot_settings').get();
-    if (!doc.exists) return null;
-    return doc.data()[key] || null;
+    if (db) {
+      const doc = await db.collection('settings').doc('bot_settings').get();
+      if (!doc.exists) return null;
+      return doc.data()[key] || null;
+    } else {
+      const local = readLocalDb();
+      return local.settings[key] || null;
+    }
   },
 
   async saveSetting(key, value) {
-    if (!db) return;
-    const ref = db.collection('settings').doc('bot_settings');
-    await ref.set({ [key]: value }, { merge: true });
+    if (db) {
+      const ref = db.collection('settings').doc('bot_settings');
+      await ref.set({ [key]: value }, { merge: true });
+    } else {
+      const local = readLocalDb();
+      local.settings[key] = value;
+      writeLocalDb(local);
+    }
   },
 
   async getAllSettings() {
-    if (!db) return {};
-    const doc = await db.collection('settings').doc('bot_settings').get();
-    return doc.exists ? doc.data() : {};
+    if (db) {
+      const doc = await db.collection('settings').doc('bot_settings').get();
+      return doc.exists ? doc.data() : {};
+    } else {
+      const local = readLocalDb();
+      return local.settings || {};
+    }
   }
 };
+

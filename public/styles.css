@@ -175,6 +175,36 @@ h1 {
   font-size: 1rem;
 }
 
+.btn-voice {
+  background: var(--bg-glass);
+  color: var(--text-main);
+  border: 1px solid var(--border-glass);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+}
+
+.btn-voice:hover {
+  background: rgba(99, 102, 241, 0.25);
+  border-color: var(--accent-primary);
+  transform: translateY(-2px);
+}
+
+.btn-voice.recording {
+  background: #ef4444 !important;
+  color: white !important;
+  border-color: #f87171 !important;
+  animation: pulse-voice 1.2s infinite;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.6);
+}
+
+@keyframes pulse-voice {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  50% { transform: scale(1.08); box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
 .ai-hint {
   font-size: 0.8rem;
   color: var(--text-muted);
