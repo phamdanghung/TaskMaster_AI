@@ -19,25 +19,29 @@ function fallbackParseTask(text) {
     priority = 'low';
   }
 
-  if (lower.includes('họp') || lower.includes('gặp')) category = 'Lịch họp';
-  else if (lower.includes('mua') || lower.includes('đi chợ') || lower.includes('siêu thị')) category = 'Cá nhân';
+  if (lower.includes('họp') || lower.includes('gặp') || lower.includes('xem')) category = 'Lịch họp';
+  else if (lower.includes('mua') || lower.includes('đi chợ') || lower.includes('siêu thị') || lower.includes('ăn')) category = 'Cá nhân';
   else if (lower.includes('tập') || lower.includes('bác sĩ') || lower.includes('thuốc')) category = 'Sức khỏe';
 
-  let hour = 17;
+  let hour = 9;
   let minute = 0;
-  const timeMatch = lower.match(/(\d{1,2})h(\d{1,2})?|(\d{1,2}):(\d{1,2})/);
-  if (timeMatch) {
-    if (timeMatch[1]) {
-      hour = parseInt(timeMatch[1], 10);
-      if (timeMatch[2]) minute = parseInt(timeMatch[2], 10);
-    } else if (timeMatch[3]) {
-      hour = parseInt(timeMatch[3], 10);
-      minute = parseInt(timeMatch[4], 10);
+
+  const hourMatch = lower.match(/(\d{1,2})\s*(?:h|giờ|:|sáng|chiều|tối)/i) || lower.match(/(\d{1,2})\s+(?:sáng|chiều|tối)/i);
+  if (hourMatch) {
+    let parsedHour = parseInt(hourMatch[1], 10);
+    if ((lower.includes('chiều') || lower.includes('tối')) && parsedHour < 12) {
+      parsedHour += 12;
+    }
+    hour = parsedHour;
+
+    const minMatch = lower.match(/(?:h|giờ|:)\s*(\d{1,2})/i);
+    if (minMatch && minMatch[1]) {
+      minute = parseInt(minMatch[1], 10);
     }
   }
 
   let taskDate = new Date(now);
-  if (lower.includes('ngày mai') || lower.includes('sáng mai') || lower.includes('chiều mai')) {
+  if (lower.includes('ngày mai') || lower.includes('sáng mai') || lower.includes('chiều mai') || lower.includes('tối mai')) {
     taskDate.setDate(taskDate.getDate() + 1);
   }
 
@@ -49,10 +53,13 @@ function fallbackParseTask(text) {
 
   const due_date = `${yyyy}-${mm}-${dd} ${hh}:${minStr}`;
 
-  let title = text.replace(/nhắc (tôi|mình)?/gi, '')
-                  .replace(/vào lúc \d+h\d*/gi, '')
-                  .replace(/lúc \d+:\d+/gi, '')
-                  .trim();
+  let title = text
+    .replace(/nhắc\s+(tôi|mình|em|anh)?/gi, '')
+    .replace(/(vào\s+)?(lúc\s+)?\d{1,2}\s*(h|giờ|:)?\s*(\d{1,2})?\s*(sáng|chiều|tối)?\s*(nay|mai)?/gi, '')
+    .replace(/(ngày\s+)?(hôm\s+nay|hôm\s+qua|ngày\s+mai|sáng\s+mai|chiều\s+mai|tối\s+mai)/gi, '')
+    .trim()
+    .replace(/^[\s,.-]+|[\s,.-]+$/g, '');
+
   if (!title) title = text;
 
   return {
