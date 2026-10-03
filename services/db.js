@@ -306,6 +306,7 @@ module.exports = {
   },
 
   getDebugInfo() {
+    getDb();
     return {
       hasDbInstance: !!dbInstance,
       isInitialized,
