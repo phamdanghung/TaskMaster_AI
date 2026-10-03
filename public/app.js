@@ -209,10 +209,26 @@ document.addEventListener('DOMContentLoaded', () => {
         renderTasks();
         renderKanban();
         renderCalendar();
+        updateStatsUI(currentTasks);
+        fetchStats();
       }
     } catch (err) {
       showToast('❌ Không thể tải danh sách công việc');
     }
+  }
+
+  function updateStatsUI(tasks) {
+    if (!tasks) return;
+    const now = new Date();
+    const total = tasks.length;
+    const high = tasks.filter(t => t.priority === 'high' && t.status !== 'done').length;
+    const overdue = tasks.filter(t => t.status !== 'done' && t.due_date && new Date(t.due_date) < now).length;
+    const done = tasks.filter(t => t.status === 'done').length;
+
+    if (statTotal) statTotal.textContent = total;
+    if (statHigh) statHigh.textContent = high;
+    if (statOverdue) statOverdue.textContent = overdue;
+    if (statDone) statDone.textContent = done;
   }
 
   async function fetchStats() {
