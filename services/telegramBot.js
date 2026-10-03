@@ -58,8 +58,8 @@ function getBotInstance(token) {
   bot.command('today', async (ctx) => { await sendTodayTasks(ctx); });
   bot.command('pending', async (ctx) => { await sendPendingTasks(ctx); });
 
-  bot.on('callback_query:data', async (ctx) => {
-    const data = ctx.callbackQuery.data;
+  bot.on('callback_query', async (ctx) => {
+    const data = ctx.callbackQuery ? ctx.callbackQuery.data : '';
 
     if (data.startsWith('done_')) {
       const taskId = data.replace('done_', '');
@@ -73,8 +73,8 @@ function getBotInstance(token) {
     }
   });
 
-  bot.on('message:text', async (ctx) => {
-    const text = ctx.message.text;
+  bot.on('message', async (ctx) => {
+    const text = ctx.message ? ctx.message.text : null;
     if (text && !text.startsWith('/')) {
       const chatId = ctx.chat.id;
       await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
