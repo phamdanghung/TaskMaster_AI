@@ -5,11 +5,11 @@
   ],
   "crons": [
     {
-      "path": "/api/cron/daily-summary",
+      "path": "/api/daily-summary",
       "schedule": "0 1 * * *"
     },
     {
-      "path": "/api/cron/reminders",
+      "path": "/api/reminders",
       "schedule": "*/15 * * * *"
     }
   ]
