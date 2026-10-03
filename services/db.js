@@ -55,10 +55,10 @@ function cleanEnvVar(val) {
 
 let dbInstance = null;
 let isInitialized = false;
+let lastInitError = null;
 
 function getDb() {
   if (isInitialized) return dbInstance;
-  isInitialized = true;
   try {
     const apps = admin.getApps ? admin.getApps() : [];
     if (!apps.length) {
@@ -70,6 +70,7 @@ function getDb() {
           credential = admin.credential.cert(JSON.parse(cleanEnvVar(serviceAccountStr)));
         } catch (e) {
           console.error("⚠️ Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON:", e.message);
+          lastInitError = e;
         }
       } else {
         const projectId = cleanEnvVar(process.env.FIREBASE_PROJECT_ID);
@@ -93,11 +94,13 @@ function getDb() {
     const activeApps = admin.getApps ? admin.getApps() : [];
     if (activeApps.length) {
       dbInstance = getFirestore();
+      isInitialized = true;
       console.log("🔥 Đã kết nối Firebase Firestore thành công!");
     } else {
       console.log("📁 Firebase chưa cấu hình đầy đủ. Đang sử dụng lưu trữ cục bộ (local_db.json)");
     }
   } catch (err) {
+    lastInitError = err;
     console.error("⚠️ Firebase init error:", err.message);
   }
   return dbInstance;
@@ -300,6 +303,22 @@ module.exports = {
       const local = readLocalDb();
       return local.settings || {};
     }
+  },
+
+  getDebugInfo() {
+    return {
+      hasDbInstance: !!dbInstance,
+      isInitialized,
+      lastError: lastInitError ? lastInitError.message : null,
+      env: {
+        hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
+        hasClientEmail: !!process.env.FIREBASE_CLIENT_EMAIL,
+        hasPrivateKey: !!process.env.FIREBASE_PRIVATE_KEY,
+        projectIdVal: cleanEnvVar(process.env.FIREBASE_PROJECT_ID),
+        clientEmailVal: cleanEnvVar(process.env.FIREBASE_CLIENT_EMAIL),
+        privateKeyLength: (process.env.FIREBASE_PRIVATE_KEY || '').length
+      }
+    };
   }
 };
 

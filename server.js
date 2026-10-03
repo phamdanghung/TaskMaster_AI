@@ -80,6 +80,15 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+app.get('/api/debug-db', (req, res) => {
+  try {
+    const info = db.getDebugInfo ? db.getDebugInfo() : {};
+    res.json({ success: true, info });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.post('/api/parse-ai', async (req, res) => {
   try {
     const { text } = req.body;
