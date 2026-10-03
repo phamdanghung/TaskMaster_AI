@@ -24,53 +24,6 @@ app.get('/api/tasks', async (req, res) => {
   }
 });
 
-app.get('/api/tasks/:id', async (req, res) => {
-  try {
-    const task = await db.getTaskById(req.params.id);
-    if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
-    res.json({ success: true, task });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/tasks', async (req, res) => {
-  try {
-    const newTask = await db.createTask(req.body);
-    res.json({ success: true, task: newTask });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.put('/api/tasks/:id', async (req, res) => {
-  try {
-    const updated = await db.updateTask(req.params.id, req.body);
-    if (!updated) return res.status(404).json({ success: false, error: 'Task not found' });
-    res.json({ success: true, task: updated });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/tasks/:id/done', async (req, res) => {
-  try {
-    const updated = await db.markTaskDone(req.params.id);
-    res.json({ success: true, task: updated });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.delete('/api/tasks/:id', async (req, res) => {
-  try {
-    const success = await db.deleteTask(req.params.id);
-    res.json({ success });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 app.get(['/api/daily-summary', '/daily-summary'], async (req, res) => {
   try {
     const chatId = process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID');
@@ -114,6 +67,53 @@ app.get(['/api/reminders', '/reminders'], async (req, res) => {
       }
     }
     res.json({ success: true, reminded_count: dueTasks.length });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/tasks/:id', async (req, res) => {
+  try {
+    const task = await db.getTaskById(req.params.id);
+    if (!task) return res.status(404).json({ success: false, error: 'Task not found' });
+    res.json({ success: true, task });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/tasks', async (req, res) => {
+  try {
+    const newTask = await db.createTask(req.body);
+    res.json({ success: true, task: newTask });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.put('/api/tasks/:id', async (req, res) => {
+  try {
+    const updated = await db.updateTask(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ success: false, error: 'Task not found' });
+    res.json({ success: true, task: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post('/api/tasks/:id/done', async (req, res) => {
+  try {
+    const updated = await db.markTaskDone(req.params.id);
+    res.json({ success: true, task: updated });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/tasks/:id', async (req, res) => {
+  try {
+    const success = await db.deleteTask(req.params.id);
+    res.json({ success });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
