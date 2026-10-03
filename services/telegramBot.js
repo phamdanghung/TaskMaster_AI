@@ -4,6 +4,15 @@ const aiService = require('./aiService');
 
 let bot = null;
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 function getBotInstance(token) {
   if (bot) return bot;
   if (!token) return null;
@@ -25,16 +34,9 @@ function getBotInstance(token) {
     }
 
     await ctx.reply(
-      `👋 *Chào bạn! TaskMaster AI đã sẵn sàng hỗ trợ bạn.*
-
-🆔 *Chat ID của bạn:* \`${chatId}\` *(Đã tự động kết nối với Web App!)*
-
-📌 *Cách dùng cực đơn giản:*
-1️⃣ Gửi tin nhắn tiếng Việt bất kỳ (VD: *"Nhắc tôi 15h chiều nay họp khẩn với đối tác"*).
-2️⃣ Nhấn lệnh /today để xem việc hôm nay.
-3️⃣ Gửi tin nhắn bất kỳ để AI tự động tạo task cho bạn!`,
+      `👋 <b>Chào bạn! TaskMaster AI đã sẵn sàng hỗ trợ bạn.</b>\n\n🆔 <b>Chat ID của bạn:</b> <code>${chatId}</code> <i>(Đã tự động kết nối với Web App!)</i>\n\n📌 <b>Cách dùng cực đơn giản:</b>\n1️⃣ Gửi tin nhắn tiếng Việt bất kỳ (VD: <i>"Nhắc tôi 15h chiều nay họp khẩn với đối tác"</i>).\n2️⃣ Nhấn lệnh /today để xem việc hôm nay.\n3️⃣ Gửi tin nhắn bất kỳ để AI tự động tạo task cho bạn!`, 
       {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         reply_markup: {
           inline_keyboard: keyboard
         }
@@ -65,7 +67,7 @@ function getBotInstance(token) {
       const taskId = data.replace('done_', '');
       await db.markTaskDone(taskId);
       await ctx.answerCallbackQuery({ text: '✅ Đã hoàn thành công việc!' });
-      await ctx.editMessageText(`✅ *Đã đánh dấu hoàn thành công việc!*`, { parse_mode: 'Markdown' });
+      await ctx.editMessageText(`✅ <b>Đã đánh dấu hoàn thành công việc!</b>`, { parse_mode: 'HTML' });
     } else if (data === 'cmd_today') {
       await sendTodayTasks(ctx);
     } else if (data === 'cmd_pending') {
@@ -81,23 +83,15 @@ function getBotInstance(token) {
         await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
         process.env.TELEGRAM_CHAT_ID = String(chatId);
 
-        await ctx.reply('🧠 *AI đang phân tích công việc của bạn...*', { parse_mode: 'Markdown' });
-
         const parsed = await aiService.parseTaskFromText(text);
         const newTask = await db.createTask(parsed);
 
         const priorityIcon = newTask.priority === 'high' ? '🔴 Cao' : newTask.priority === 'medium' ? '🟡 Trung bình' : '🔵 Thấp';
 
         await ctx.reply(
-          `✅ *ĐÃ TẠO CÔNG VIỆC MỚI!*
-
-📌 *Tiêu đề:* ${newTask.title}
-🏷️ *Phân loại:* ${newTask.category}
-🔥 *Độ ưu tiên:* ${priorityIcon}
-📅 *Hạn chót:* ${newTask.due_date || 'Không cài đặt'}
-⏰ *Thời gian nhắc:* ${newTask.reminder_time || 'Không cài đặt'}`,
+          `✅ <b>ĐÃ TẠO CÔNG VIỆC MỚI!</b>\n\n📌 <b>Tiêu đề:</b> ${escapeHtml(newTask.title)}\n🏷️ <b>Phân loại:</b> ${escapeHtml(newTask.category)}\n🔥 <b>Độ ưu tiên:</b> ${priorityIcon}\n📅 <b>Hạn chót:</b> ${escapeHtml(newTask.due_date || 'Không cài đặt')}\n⏰ <b>Thời gian nhắc:</b> ${escapeHtml(newTask.reminder_time || 'Không cài đặt')}`,
           {
-            parse_mode: 'Markdown',
+            parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
                 [{ text: '✅ Đánh dấu xong', callback_data: `done_${newTask.id}` }]
@@ -107,7 +101,7 @@ function getBotInstance(token) {
         );
       } catch (err) {
         console.error("Error processing Telegram message:", err.message);
-        await ctx.reply(`✅ *Đã ghi nhận công việc:* "${text}"`);
+        await ctx.reply(`✅ <b>Đã nhận công việc:</b> ${escapeHtml(text)}`, { parse_mode: 'HTML' });
       }
     }
   });
@@ -117,7 +111,7 @@ function getBotInstance(token) {
 
 async function initBot() {
   if (bot) {
-    try { bot.stop(); } catch (e) { }
+    try { bot.stop(); } catch (e) {}
     bot = null;
   }
 
@@ -149,23 +143,23 @@ async function sendTodayTasks(ctx) {
   const allTasks = await db.getAllTasks();
   const today = new Date().toISOString().split('T')[0];
   const tasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
-
+  
   if (tasks.length === 0) {
-    await ctx.reply('🎉 *Hôm nay bạn không có công việc nào cần xử lý!*', { parse_mode: 'Markdown' });
+    await ctx.reply('🎉 <b>Hôm nay bạn không có công việc nào cần xử lý!</b>', { parse_mode: 'HTML' });
     return;
   }
 
-  let msg = `📋 *DANH SÁCH VIỆC HÔM NAY (${tasks.length} việc):*\n\n`;
+  let msg = `📋 <b>DANH SÁCH VIỆC HÔM NAY (${tasks.length} việc):</b>\n\n`;
   const keyboard = [];
 
   tasks.forEach((t, i) => {
     const icon = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '🔵';
-    msg += `${i + 1}. ${icon} *${t.title}*\n   ⏰ ${t.due_date || 'Chưa đặt hạn'}\n\n`;
+    msg += `${i + 1}. ${icon} <b>${escapeHtml(t.title)}</b>\n   ⏰ ${escapeHtml(t.due_date || 'Chưa đặt hạn')}\n\n`;
     keyboard.push([{ text: `✅ Xong: ${t.title.slice(0, 20)}`, callback_data: `done_${t.id}` }]);
   });
 
   await ctx.reply(msg, {
-    parse_mode: 'Markdown',
+    parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard }
   });
 }
@@ -173,21 +167,21 @@ async function sendTodayTasks(ctx) {
 async function sendPendingTasks(ctx) {
   const tasks = await db.getAllTasks({ status: 'todo' });
   if (tasks.length === 0) {
-    await ctx.reply('🎉 *Tất cả công việc đã được hoàn thành!*', { parse_mode: 'Markdown' });
+    await ctx.reply('🎉 <b>Tất cả công việc đã được hoàn thành!</b>', { parse_mode: 'HTML' });
     return;
   }
 
-  let msg = `⏳ *DANH SÁCH CÔNG VIỆC ĐANG CHỜ (${tasks.length} việc):*\n\n`;
+  let msg = `⏳ <b>DANH SÁCH CÔNG VIỆC ĐANG CHỜ (${tasks.length} việc):</b>\n\n`;
   const keyboard = [];
 
   tasks.slice(0, 10).forEach((t, i) => {
     const icon = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '🔵';
-    msg += `${i + 1}. ${icon} *${t.title}*\n   🏷️ ${t.category} | 📅 ${t.due_date || 'Không có hạn'}\n\n`;
+    msg += `${i + 1}. ${icon} <b>${escapeHtml(t.title)}</b>\n   🏷️ ${escapeHtml(t.category)} | 📅 ${escapeHtml(t.due_date || 'Không có hạn')}\n\n`;
     keyboard.push([{ text: `✅ Xong: ${t.title.slice(0, 20)}`, callback_data: `done_${t.id}` }]);
   });
 
   await ctx.reply(msg, {
-    parse_mode: 'Markdown',
+    parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard }
   });
 }
