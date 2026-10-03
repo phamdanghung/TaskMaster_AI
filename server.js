@@ -71,7 +71,7 @@ app.delete('/api/tasks/:id', async (req, res) => {
   }
 });
 
-app.get('/api/daily-summary', async (req, res) => {
+app.get(['/api/daily-summary', '/daily-summary'], async (req, res) => {
   try {
     const chatId = process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID');
     if (!chatId) return res.json({ success: false, error: 'No Telegram Chat ID registered' });
@@ -91,7 +91,7 @@ app.get('/api/daily-summary', async (req, res) => {
   }
 });
 
-app.get('/api/reminders', async (req, res) => {
+app.get(['/api/reminders', '/reminders'], async (req, res) => {
   try {
     const dueTasks = await db.getDueTasksToRemind();
     const chatId = process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID');
