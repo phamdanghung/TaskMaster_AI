@@ -340,7 +340,7 @@ module.exports = {
     getDb();
     return {
       hasDbInstance: !!dbInstance,
-      isInitialized,
+      isInitialized: !!dbInstance,
       lastError: lastInitError ? lastInitError.message : null,
       env: {
         hasProjectId: !!process.env.FIREBASE_PROJECT_ID,
