@@ -5,29 +5,43 @@ const path = require('path');
 const dotenv = require('dotenv');
 dotenv.config();
 
-const LOCAL_DB_PATH = path.join(__dirname, '../data/local_db.json');
+const LOCAL_DB_PATH = (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME)
+  ? path.join('/tmp', 'local_db.json')
+  : path.join(__dirname, '../data/local_db.json');
+
+let memoryDb = { tasks: [], settings: {} };
 
 function ensureLocalDb() {
-  const dir = path.dirname(LOCAL_DB_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  if (!fs.existsSync(LOCAL_DB_PATH)) {
-    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify({ tasks: [], settings: {} }, null, 2));
+  try {
+    const dir = path.dirname(LOCAL_DB_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(LOCAL_DB_PATH)) {
+      fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(memoryDb, null, 2));
+    }
+  } catch (err) {
+    console.warn("⚠️ Local DB fs fallback:", err.message);
   }
 }
 
 function readLocalDb() {
   ensureLocalDb();
   try {
-    const raw = fs.readFileSync(LOCAL_DB_PATH, 'utf8');
-    return JSON.parse(raw);
-  } catch (err) {
-    return { tasks: [], settings: {} };
-  }
+    if (fs.existsSync(LOCAL_DB_PATH)) {
+      const raw = fs.readFileSync(LOCAL_DB_PATH, 'utf8');
+      memoryDb = JSON.parse(raw);
+    }
+  } catch (err) {}
+  return memoryDb;
 }
 
 function writeLocalDb(data) {
-  ensureLocalDb();
-  fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(data, null, 2));
+  memoryDb = data;
+  try {
+    ensureLocalDb();
+    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(data, null, 2));
+  } catch (err) {
+    console.warn("⚠️ Write local DB fs fallback:", err.message);
+  }
 }
 
 // Khởi tạo Firebase Admin nếu có cấu hình

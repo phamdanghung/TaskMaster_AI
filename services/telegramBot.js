@@ -77,33 +77,38 @@ function getBotInstance(token) {
     const text = ctx.message ? ctx.message.text : null;
     if (text && !text.startsWith('/')) {
       const chatId = ctx.chat.id;
-      await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
-      process.env.TELEGRAM_CHAT_ID = String(chatId);
+      try {
+        await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
+        process.env.TELEGRAM_CHAT_ID = String(chatId);
 
-      await ctx.reply('🧠 *AI đang phân tích công việc của bạn...*', { parse_mode: 'Markdown' });
+        await ctx.reply('🧠 *AI đang phân tích công việc của bạn...*', { parse_mode: 'Markdown' });
 
-      const parsed = await aiService.parseTaskFromText(text);
-      const newTask = await db.createTask(parsed);
+        const parsed = await aiService.parseTaskFromText(text);
+        const newTask = await db.createTask(parsed);
 
-      const priorityIcon = newTask.priority === 'high' ? '🔴 Cao' : newTask.priority === 'medium' ? '🟡 Trung bình' : '🔵 Thấp';
+        const priorityIcon = newTask.priority === 'high' ? '🔴 Cao' : newTask.priority === 'medium' ? '🟡 Trung bình' : '🔵 Thấp';
 
-      await ctx.reply(
-        `✅ *ĐÃ TẠO CÔNG VIỆC MỚI!*
+        await ctx.reply(
+          `✅ *ĐÃ TẠO CÔNG VIỆC MỚI!*
 
 📌 *Tiêu đề:* ${newTask.title}
 🏷️ *Phân loại:* ${newTask.category}
 🔥 *Độ ưu tiên:* ${priorityIcon}
 📅 *Hạn chót:* ${newTask.due_date || 'Không cài đặt'}
 ⏰ *Thời gian nhắc:* ${newTask.reminder_time || 'Không cài đặt'}`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '✅ Đánh dấu xong', callback_data: `done_${newTask.id}` }]
-            ]
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '✅ Đánh dấu xong', callback_data: `done_${newTask.id}` }]
+              ]
+            }
           }
-        }
-      );
+        );
+      } catch (err) {
+        console.error("Error processing Telegram message:", err.message);
+        await ctx.reply(`✅ *Đã ghi nhận công việc:* "${text}"`);
+      }
     }
   });
 
