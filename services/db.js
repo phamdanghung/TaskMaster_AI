@@ -111,22 +111,37 @@ module.exports = {
     let tasks = [];
     const db = getDb();
     if (db) {
-      let query = db.collection('tasks');
-      if (filters.status) query = query.where('status', '==', filters.status);
-      if (filters.priority) query = query.where('priority', '==', filters.priority);
-      if (filters.category) query = query.where('category', '==', filters.category);
+      try {
+        let query = db.collection('tasks');
+        if (filters.status) query = query.where('status', '==', filters.status);
+        if (filters.priority) query = query.where('priority', '==', filters.priority);
+        if (filters.category) query = query.where('category', '==', filters.category);
 
-      const snapshot = await query.get();
-      snapshot.forEach(doc => {
-        tasks.push({ id: doc.id, ...doc.data() });
-      });
-    } else {
-      const local = readLocalDb();
-      tasks = [...local.tasks];
-      if (filters.status) tasks = tasks.filter(t => t.status === filters.status);
-      if (filters.priority) tasks = tasks.filter(t => t.priority === filters.priority);
-      if (filters.category) tasks = tasks.filter(t => t.category === filters.category);
+        const snapshot = await query.get();
+        snapshot.forEach(doc => {
+          tasks.push({ id: doc.id, ...doc.data() });
+        });
+
+        tasks.sort((a, b) => {
+          if (filters.sort === 'due_date') {
+            return new Date(a.due_date || '9999-12-31') - new Date(b.due_date || '9999-12-31');
+          } else if (filters.sort === 'priority') {
+            const pMap = { high: 1, medium: 2, low: 3 };
+            return (pMap[a.priority] || 4) - (pMap[b.priority] || 4);
+          }
+          return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
+        return tasks;
+      } catch (err) {
+        console.warn("⚠️ Firestore query error, falling back to local DB:", err.message);
+      }
     }
+
+    const local = readLocalDb();
+    tasks = [...local.tasks];
+    if (filters.status) tasks = tasks.filter(t => t.status === filters.status);
+    if (filters.priority) tasks = tasks.filter(t => t.priority === filters.priority);
+    if (filters.category) tasks = tasks.filter(t => t.category === filters.category);
 
     tasks.sort((a, b) => {
       if (filters.sort === 'due_date') {
@@ -143,12 +158,15 @@ module.exports = {
   async getTaskById(id) {
     const db = getDb();
     if (db) {
-      const doc = await db.collection('tasks').doc(id).get();
-      return doc.exists ? { id: doc.id, ...doc.data() } : null;
-    } else {
-      const local = readLocalDb();
-      return local.tasks.find(t => t.id === id) || null;
+      try {
+        const doc = await db.collection('tasks').doc(id).get();
+        if (doc.exists) return { id: doc.id, ...doc.data() };
+      } catch (err) {
+        console.warn("⚠️ Firestore getTaskById error:", err.message);
+      }
     }
+    const local = readLocalDb();
+    return local.tasks.find(t => t.id === id) || null;
   },
 
   async createTask(taskData) {
@@ -168,15 +186,19 @@ module.exports = {
 
     const db = getDb();
     if (db) {
-      const ref = await db.collection('tasks').add(newTask);
-      return { id: ref.id, ...newTask };
-    } else {
-      const local = readLocalDb();
-      newTask.id = 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
-      local.tasks.push(newTask);
-      writeLocalDb(local);
-      return newTask;
+      try {
+        const ref = await db.collection('tasks').add(newTask);
+        return { id: ref.id, ...newTask };
+      } catch (err) {
+        console.warn("⚠️ Firestore createTask error:", err.message);
+      }
     }
+
+    const local = readLocalDb();
+    newTask.id = 'task_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
+    local.tasks.push(newTask);
+    writeLocalDb(local);
+    return newTask;
   },
 
   async updateTask(id, taskData) {
@@ -185,20 +207,25 @@ module.exports = {
 
     const db = getDb();
     if (db) {
-      const ref = db.collection('tasks').doc(id);
-      const doc = await ref.get();
-      if (!doc.exists) return null;
-      await ref.update(updates);
-      const updatedDoc = await ref.get();
-      return { id: updatedDoc.id, ...updatedDoc.data() };
-    } else {
-      const local = readLocalDb();
-      const idx = local.tasks.findIndex(t => t.id === id);
-      if (idx === -1) return null;
-      local.tasks[idx] = { ...local.tasks[idx], ...updates };
-      writeLocalDb(local);
-      return local.tasks[idx];
+      try {
+        const ref = db.collection('tasks').doc(id);
+        const doc = await ref.get();
+        if (doc.exists) {
+          await ref.update(updates);
+          const updatedDoc = await ref.get();
+          return { id: updatedDoc.id, ...updatedDoc.data() };
+        }
+      } catch (err) {
+        console.warn("⚠️ Firestore updateTask error:", err.message);
+      }
     }
+
+    const local = readLocalDb();
+    const idx = local.tasks.findIndex(t => t.id === id);
+    if (idx === -1) return null;
+    local.tasks[idx] = { ...local.tasks[idx], ...updates };
+    writeLocalDb(local);
+    return local.tasks[idx];
   },
 
   async markTaskDone(id) {
@@ -208,15 +235,19 @@ module.exports = {
   async deleteTask(id) {
     const db = getDb();
     if (db) {
-      await db.collection('tasks').doc(id).delete();
-      return true;
-    } else {
-      const local = readLocalDb();
-      const initialLen = local.tasks.length;
-      local.tasks = local.tasks.filter(t => t.id !== id);
-      writeLocalDb(local);
-      return local.tasks.length < initialLen;
+      try {
+        await db.collection('tasks').doc(id).delete();
+        return true;
+      } catch (err) {
+        console.warn("⚠️ Firestore deleteTask error:", err.message);
+      }
     }
+
+    const local = readLocalDb();
+    const initialLen = local.tasks.length;
+    local.tasks = local.tasks.filter(t => t.id !== id);
+    writeLocalDb(local);
+    return local.tasks.length < initialLen;
   },
 
   async getDueTasksToRemind() {
@@ -226,27 +257,32 @@ module.exports = {
 
     const db = getDb();
     if (db) {
-      const snapshot = await db.collection('tasks').where('status', '!=', 'done').get();
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (!data.reminded && data.reminder_time) {
-          const remTime = new Date(data.reminder_time);
-          if (remTime > now && remTime <= tenMinsLater) {
-            tasks.push({ id: doc.id, ...data });
+      try {
+        const snapshot = await db.collection('tasks').where('status', '!=', 'done').get();
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          if (!data.reminded && data.reminder_time) {
+            const remTime = new Date(data.reminder_time);
+            if (remTime > now && remTime <= tenMinsLater) {
+              tasks.push({ id: doc.id, ...data });
+            }
           }
-        }
-      });
-    } else {
-      const local = readLocalDb();
-      local.tasks.filter(t => t.status !== 'done').forEach(data => {
-        if (!data.reminded && data.reminder_time) {
-          const remTime = new Date(data.reminder_time);
-          if (remTime > now && remTime <= tenMinsLater) {
-            tasks.push(data);
-          }
-        }
-      });
+        });
+        return tasks;
+      } catch (err) {
+        console.warn("⚠️ Firestore getDueTasksToRemind error:", err.message);
+      }
     }
+
+    const local = readLocalDb();
+    local.tasks.filter(t => t.status !== 'done').forEach(data => {
+      if (!data.reminded && data.reminder_time) {
+        const remTime = new Date(data.reminder_time);
+        if (remTime > now && remTime <= tenMinsLater) {
+          tasks.push(data);
+        }
+      }
+    });
     return tasks;
   },
 
