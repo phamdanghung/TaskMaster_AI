@@ -80,36 +80,6 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
-app.get('/api/debug-db', async (req, res) => {
-  try {
-    const dbModule = require('./services/db');
-    const info = dbModule.getDebugInfo ? dbModule.getDebugInfo() : {};
-    
-    let firestoreTest = 'not_attempted';
-    let firestoreError = null;
-
-    try {
-      const { getApps } = require('firebase-admin/app');
-      const { getFirestore } = require('firebase-admin/firestore');
-      const apps = getApps();
-      if (apps.length) {
-        const firestore = getFirestore();
-        const snap = await firestore.collection('tasks').limit(1).get();
-        firestoreTest = 'success_count_' + snap.size;
-      } else {
-        firestoreTest = 'no_firebase_apps_initialized';
-      }
-    } catch (e) {
-      firestoreTest = 'firestore_error';
-      firestoreError = e.message;
-    }
-
-    res.json({ success: true, info, firestoreTest, firestoreError });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 app.post('/api/parse-ai', async (req, res) => {
   try {
     const { text } = req.body;
