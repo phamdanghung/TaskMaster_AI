@@ -225,6 +225,10 @@ app.all('/api/set-telegram-webhook', async (req, res) => {
   }
 });
 
+app.use((req, res) => {
+  res.status(404).send(`Route not found: req.url="${req.url}", req.originalUrl="${req.originalUrl}"`);
+});
+
 // For Vercel Serverless we need to export the app
 module.exports = app;
 
