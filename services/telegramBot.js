@@ -62,6 +62,9 @@ function getBotInstance(token) {
 
   bot.command('today', async (ctx) => { await sendTodayTasks(ctx); });
   bot.command('pending', async (ctx) => { await sendPendingTasks(ctx); });
+  bot.command('baocao', async (ctx) => { await sendDailyReport(ctx); });
+  bot.command('summary', async (ctx) => { await sendDailyReport(ctx); });
+  bot.command('report', async (ctx) => { await sendDailyReport(ctx); });
 
   bot.on('callback_query', async (ctx) => {
     const data = ctx.callbackQuery ? ctx.callbackQuery.data : '';
@@ -189,6 +192,18 @@ async function sendPendingTasks(ctx) {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard }
   });
+}
+
+async function sendDailyReport(ctx) {
+  const allTasks = await db.getAllTasks();
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+
+  const todayTasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
+  const overdueTasks = allTasks.filter(t => t.status !== 'done' && t.due_date && new Date(t.due_date) < now);
+
+  const summaryMsg = await aiService.generateDailySummaryAlert(todayTasks, overdueTasks);
+  await ctx.reply(summaryMsg, { parse_mode: 'HTML' });
 }
 
 async function sendMessage(chatId, text, options = {}) {

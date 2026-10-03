@@ -71,10 +71,49 @@ app.delete('/api/tasks/:id', async (req, res) => {
   }
 });
 
-app.get('/api/stats', async (req, res) => {
+app.get('/api/cron/daily-summary', async (req, res) => {
   try {
-    const stats = await db.getStats();
-    res.json({ success: true, stats });
+    const chatId = process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID');
+    if (!chatId) return res.json({ success: false, error: 'No Telegram Chat ID registered' });
+
+    const allTasks = await db.getAllTasks();
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
+
+    const todayTasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
+    const overdueTasks = allTasks.filter(t => t.status !== 'done' && t.due_date && new Date(t.due_date) < now);
+
+    const summaryMsg = await aiService.generateDailySummaryAlert(todayTasks, overdueTasks);
+    await telegramBot.sendMessage(chatId, summaryMsg, { parse_mode: 'HTML' });
+    res.json({ success: true, message: 'Daily summary report sent' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/cron/reminders', async (req, res) => {
+  try {
+    const dueTasks = await db.getDueTasksToRemind();
+    const chatId = process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID');
+
+    for (const task of dueTasks) {
+      await db.markTaskReminded(task.id);
+      if (chatId) {
+        const priorityIcon = task.priority === 'high' ? '🚨 KHẨN CẤP' : task.priority === 'medium' ? '🟡 TRUNG BÌNH' : '🔵 THẤP';
+        await telegramBot.sendMessage(chatId, 
+          `⏰ <b>NHẮC NHỞ CÔNG VIỆC ĐẾN HẠN!</b>\n\n📌 <b>Tiêu đề:</b> ${task.title}\n🏷️ <b>Phân loại:</b> ${task.category}\n🔥 <b>Độ ưu tiên:</b> ${priorityIcon}\n📅 <b>Hạn chót:</b> ${task.due_date || 'Không có'}\n📝 <b>Mô tả:</b> ${task.description || 'Không có'}`,
+          {
+            parse_mode: 'HTML',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '✅ Đã hoàn thành ngay', callback_data: `done_${task.id}` }]
+              ]
+            }
+          }
+        ).catch(() => {});
+      }
+    }
+    res.json({ success: true, reminded_count: dueTasks.length });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

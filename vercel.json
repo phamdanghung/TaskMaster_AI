@@ -2,5 +2,15 @@
   "version": 2,
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.js" }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/daily-summary",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/reminders",
+      "schedule": "*/15 * * * *"
+    }
   ]
 }
