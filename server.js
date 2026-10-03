@@ -134,10 +134,12 @@ app.post('/api/settings', async (req, res) => {
   }
 });
 
+const DEFAULT_TOKEN = '8696351743:AAGewjwkS3D2CyC8UB1Yd5z42VfpEGwIpWs';
+
 app.post('/api/telegram-webhook', async (req, res) => {
   try {
-    const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN');
-    if (token) {
+    const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
+    if (req.body) {
       await telegramBot.handleWebhookUpdate(req.body, token);
     }
     res.json({ ok: true });
@@ -149,7 +151,7 @@ app.post('/api/telegram-webhook', async (req, res) => {
 
 app.all('/api/set-telegram-webhook', async (req, res) => {
   try {
-    const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN');
+    const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
     const host = req.headers['x-forwarded-host'] || req.headers.host;
     const protocol = req.headers['x-forwarded-proto'] || 'https';
     const defaultUrl = `${protocol}://${host}/api/telegram-webhook`;

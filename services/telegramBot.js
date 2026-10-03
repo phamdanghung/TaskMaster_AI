@@ -4,6 +4,8 @@ const aiService = require('./aiService');
 
 let bot = null;
 
+const DEFAULT_TOKEN = '8696351743:AAGewjwkS3D2CyC8UB1Yd5z42VfpEGwIpWs';
+
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)
@@ -14,10 +16,11 @@ function escapeHtml(str) {
 }
 
 function getBotInstance(token) {
+  const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_TOKEN;
   if (bot) return bot;
-  if (!token) return null;
+  if (!activeToken) return null;
 
-  bot = new Bot(token);
+  bot = new Bot(activeToken);
 
   bot.command('start', async (ctx) => {
     const chatId = ctx.chat.id;
