@@ -16,19 +16,13 @@ function startScheduler() {
     for (const task of dueTasks) {
       await db.markTaskReminded(task.id);
 
-      if (bot && chatId) {
+      if (chatId) {
         const priorityIcon = task.priority === 'high' ? '🚨 KHẨN CẤP' : task.priority === 'medium' ? '🟡 TRUNG BÌNH' : '🔵 THẤP';
         
-        bot.sendMessage(chatId, 
-          `⏰ *NHẮC NHỞ CÔNG VIỆC ĐẾN HẠN!*
-
-📌 *Tiêu đề:* ${task.title}
-🏷️ *Phân loại:* ${task.category}
-🔥 *Độ ưu tiên:* ${priorityIcon}
-📅 *Hạn chót:* ${task.due_date || 'Không có'}
-📝 *Mô tả:* ${task.description || 'Không có'}`,
+        telegramBot.sendMessage(chatId, 
+          `⏰ <b>NHẮC NHỞ CÔNG VIỆC ĐẾN HẠN!</b>\n\n📌 <b>Tiêu đề:</b> ${task.title}\n🏷️ <b>Phân loại:</b> ${task.category}\n🔥 <b>Độ ưu tiên:</b> ${priorityIcon}\n📅 <b>Hạn chót:</b> ${task.due_date || 'Không có'}\n📝 <b>Mô tả:</b> ${task.description || 'Không có'}`,
           {
-            parse_mode: 'Markdown',
+            parse_mode: 'HTML',
             reply_markup: {
               inline_keyboard: [
                 [{ text: '✅ Đã hoàn thành ngay', callback_data: `done_${task.id}` }]
@@ -41,9 +35,8 @@ function startScheduler() {
   });
 
   cron.schedule('0 8 * * *', async () => {
-    const bot = telegramBot.getBot();
     const chatId = process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID');
-    if (!bot || !chatId) return;
+    if (!chatId) return;
 
     const allTasks = await db.getAllTasks();
     const today = new Date().toISOString().split('T')[0];
@@ -54,7 +47,7 @@ function startScheduler() {
 
     const summaryMsg = await aiService.generateDailySummaryAlert(todayTasks, overdueTasks);
 
-    bot.sendMessage(chatId, summaryMsg, { parse_mode: 'Markdown' })
+    telegramBot.sendMessage(chatId, summaryMsg, { parse_mode: 'HTML' })
        .catch(err => console.error('Morning alert push error:', err.message));
   });
 }

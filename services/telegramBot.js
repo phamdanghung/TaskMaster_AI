@@ -126,8 +126,10 @@ async function initBot() {
 
   try {
     const instance = getBotInstance(token);
-    instance.startPolling();
-    console.log('🤖 Telegram Bot đã khởi chạy thành công (Polling Mode)!');
+    if (!process.env.VERCEL && process.env.USE_POLLING === 'true') {
+      try { instance.startPolling(); } catch (e) {}
+    }
+    console.log('🤖 Telegram Bot đã khởi chạy thành công!');
   } catch (err) {
     console.error('Error starting Telegram Bot:', err.message);
   }
