@@ -1,4 +1,4 @@
-const admin = require('firebase-admin');
+const { initializeApp, cert, getApps } = require('firebase-admin/app');
 const { getFirestore } = require('firebase-admin/firestore');
 const fs = require('fs');
 const path = require('path');
@@ -60,14 +60,14 @@ let lastInitError = null;
 function getDb() {
   if (isInitialized) return dbInstance;
   try {
-    const apps = admin.getApps ? admin.getApps() : [];
+    const apps = getApps();
     if (!apps.length) {
       const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
       let credential;
 
       if (serviceAccountStr) {
         try {
-          credential = admin.credential.cert(JSON.parse(cleanEnvVar(serviceAccountStr)));
+          credential = cert(JSON.parse(cleanEnvVar(serviceAccountStr)));
         } catch (e) {
           console.error("⚠️ Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON:", e.message);
           lastInitError = e;
@@ -78,7 +78,7 @@ function getDb() {
         let privateKey = cleanEnvVar(process.env.FIREBASE_PRIVATE_KEY).replace(/\\n/g, '\n');
 
         if (projectId && clientEmail && privateKey) {
-          credential = admin.credential.cert({
+          credential = cert({
             projectId,
             clientEmail,
             privateKey,
@@ -87,11 +87,11 @@ function getDb() {
       }
 
       if (credential) {
-        admin.initializeApp({ credential });
+        initializeApp({ credential });
       }
     }
 
-    const activeApps = admin.getApps ? admin.getApps() : [];
+    const activeApps = getApps();
     if (activeApps.length) {
       dbInstance = getFirestore();
       isInitialized = true;
