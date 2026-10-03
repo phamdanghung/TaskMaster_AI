@@ -82,8 +82,39 @@ app.get('/api/stats', async (req, res) => {
 
 app.get('/api/debug-db', (req, res) => {
   try {
-    const info = db.getDebugInfo ? db.getDebugInfo() : {};
-    res.json({ success: true, info });
+    const dbModule = require('./services/db');
+    const info = dbModule.getDebugInfo ? dbModule.getDebugInfo() : {};
+    
+    // Detailed test
+    let testResult = 'unknown';
+    let testError = null;
+    try {
+      const admin = require('firebase-admin');
+      const cleanEnv = (val) => {
+        if (!val) return '';
+        let str = String(val).trim();
+        if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+          str = str.slice(1, -1).trim();
+        }
+        return str;
+      };
+      
+      const pId = cleanEnv(process.env.FIREBASE_PROJECT_ID);
+      const cEmail = cleanEnv(process.env.FIREBASE_CLIENT_EMAIL);
+      let pKey = cleanEnv(process.env.FIREBASE_PRIVATE_KEY).replace(/\\n/g, '\n');
+      
+      const cred = admin.credential.cert({
+        projectId: pId,
+        clientEmail: cEmail,
+        privateKey: pKey
+      });
+      testResult = 'credential_created_ok';
+    } catch (e) {
+      testResult = 'credential_failed';
+      testError = e.message;
+    }
+
+    res.json({ success: true, info, testResult, testError });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
