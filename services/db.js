@@ -44,47 +44,69 @@ function writeLocalDb(data) {
   }
 }
 
-// Khởi tạo Firebase Admin nếu có cấu hình
-let db = null;
-try {
-  const apps = admin.getApps ? admin.getApps() : [];
-  if (!apps.length) {
-    const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-    let credential;
+function cleanEnvVar(val) {
+  if (!val) return '';
+  let str = String(val).trim();
+  if ((str.startsWith('"') && str.endsWith('"')) || (str.startsWith("'") && str.endsWith("'"))) {
+    str = str.slice(1, -1).trim();
+  }
+  return str;
+}
 
-    if (serviceAccountStr) {
-      try {
-        credential = admin.credential.cert(JSON.parse(serviceAccountStr));
-      } catch (e) {
-        console.error("⚠️ Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON:", e.message);
+let dbInstance = null;
+let isInitialized = false;
+
+function getDb() {
+  if (isInitialized) return dbInstance;
+  isInitialized = true;
+  try {
+    const apps = admin.getApps ? admin.getApps() : [];
+    if (!apps.length) {
+      const serviceAccountStr = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+      let credential;
+
+      if (serviceAccountStr) {
+        try {
+          credential = admin.credential.cert(JSON.parse(cleanEnvVar(serviceAccountStr)));
+        } catch (e) {
+          console.error("⚠️ Invalid FIREBASE_SERVICE_ACCOUNT_KEY JSON:", e.message);
+        }
+      } else {
+        const projectId = cleanEnvVar(process.env.FIREBASE_PROJECT_ID);
+        const clientEmail = cleanEnvVar(process.env.FIREBASE_CLIENT_EMAIL);
+        let privateKey = cleanEnvVar(process.env.FIREBASE_PRIVATE_KEY).replace(/\\n/g, '\n');
+
+        if (projectId && clientEmail && privateKey) {
+          credential = admin.credential.cert({
+            projectId,
+            clientEmail,
+            privateKey,
+          });
+        }
       }
-    } else if (process.env.FIREBASE_PROJECT_ID) {
-      credential = admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
-      });
+
+      if (credential) {
+        admin.initializeApp({ credential });
+      }
     }
 
-    if (credential) {
-      admin.initializeApp({ credential });
+    const activeApps = admin.getApps ? admin.getApps() : [];
+    if (activeApps.length) {
+      dbInstance = getFirestore();
+      console.log("🔥 Đã kết nối Firebase Firestore thành công!");
+    } else {
+      console.log("📁 Firebase chưa cấu hình đầy đủ. Đang sử dụng lưu trữ cục bộ (local_db.json)");
     }
+  } catch (err) {
+    console.error("⚠️ Firebase init error:", err.message);
   }
-
-  const activeApps = admin.getApps ? admin.getApps() : [];
-  if (activeApps.length) {
-    db = getFirestore();
-    console.log("🔥 Đã kết nối Firebase Firestore thành công!");
-  } else {
-    console.log("📁 Firebase chưa cấu hình. Đang sử dụng lưu trữ cục bộ (local_db.json)");
-  }
-} catch (err) {
-  console.warn("⚠️ Firebase init fallback:", err.message);
+  return dbInstance;
 }
 
 module.exports = {
   async getAllTasks(filters = {}) {
     let tasks = [];
+    const db = getDb();
     if (db) {
       let query = db.collection('tasks');
       if (filters.status) query = query.where('status', '==', filters.status);
@@ -116,6 +138,7 @@ module.exports = {
   },
 
   async getTaskById(id) {
+    const db = getDb();
     if (db) {
       const doc = await db.collection('tasks').doc(id).get();
       return doc.exists ? { id: doc.id, ...doc.data() } : null;
@@ -140,6 +163,7 @@ module.exports = {
       updated_at: now.toISOString()
     };
 
+    const db = getDb();
     if (db) {
       const ref = await db.collection('tasks').add(newTask);
       return { id: ref.id, ...newTask };
@@ -156,6 +180,7 @@ module.exports = {
     const updates = { ...taskData, updated_at: new Date().toISOString() };
     Object.keys(updates).forEach(key => updates[key] === undefined && delete updates[key]);
 
+    const db = getDb();
     if (db) {
       const ref = db.collection('tasks').doc(id);
       const doc = await ref.get();
@@ -178,6 +203,7 @@ module.exports = {
   },
 
   async deleteTask(id) {
+    const db = getDb();
     if (db) {
       await db.collection('tasks').doc(id).delete();
       return true;
@@ -195,6 +221,7 @@ module.exports = {
     const tenMinsLater = new Date(now.getTime() + 10 * 60000);
     const tasks = [];
 
+    const db = getDb();
     if (db) {
       const snapshot = await db.collection('tasks').where('status', '!=', 'done').get();
       snapshot.forEach(doc => {
@@ -241,6 +268,7 @@ module.exports = {
   },
 
   async getSetting(key) {
+    const db = getDb();
     if (db) {
       const doc = await db.collection('settings').doc('bot_settings').get();
       if (!doc.exists) return null;
@@ -252,6 +280,7 @@ module.exports = {
   },
 
   async saveSetting(key, value) {
+    const db = getDb();
     if (db) {
       const ref = db.collection('settings').doc('bot_settings');
       await ref.set({ [key]: value }, { merge: true });
@@ -263,6 +292,7 @@ module.exports = {
   },
 
   async getAllSettings() {
+    const db = getDb();
     if (db) {
       const doc = await db.collection('settings').doc('bot_settings').get();
       return doc.exists ? doc.data() : {};
