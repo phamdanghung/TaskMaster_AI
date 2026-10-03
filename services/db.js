@@ -54,11 +54,9 @@ function cleanEnvVar(val) {
 }
 
 let dbInstance = null;
-let isInitialized = false;
 let lastInitError = null;
 
 function getDb() {
-  if (isInitialized) return dbInstance;
   try {
     const apps = getApps();
     if (!apps.length) {
@@ -93,17 +91,14 @@ function getDb() {
 
     const activeApps = getApps();
     if (activeApps.length) {
-      dbInstance = getFirestore();
-      isInitialized = true;
-      console.log("🔥 Đã kết nối Firebase Firestore thành công!");
-    } else {
-      console.log("📁 Firebase chưa cấu hình đầy đủ. Đang sử dụng lưu trữ cục bộ (local_db.json)");
+      if (!dbInstance) dbInstance = getFirestore();
+      return dbInstance;
     }
   } catch (err) {
     lastInitError = err;
     console.error("⚠️ Firebase init error:", err.message);
   }
-  return dbInstance;
+  return null;
 }
 
 module.exports = {
