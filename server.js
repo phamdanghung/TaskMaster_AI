@@ -15,15 +15,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/api/tasks', async (req, res) => {
-  try {
-    const tasks = await db.getAllTasks(req.query);
-    res.json({ success: true, tasks });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 const handleDailySummary = async (req, res) => {
   try {
     const chatId = process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID');
@@ -72,22 +63,19 @@ const handleReminders = async (req, res) => {
   }
 };
 
-app.use((req, res, next) => {
-  const fullUrl = (req.originalUrl || req.url || '').toLowerCase();
-  if (fullUrl.includes('daily-summary')) {
-    return handleDailySummary(req, res);
-  }
-  if (fullUrl.includes('reminders')) {
-    return handleReminders(req, res);
-  }
-  next();
-});
-
 app.all('/api/daily-summary', handleDailySummary);
 app.all('/daily-summary', handleDailySummary);
-
 app.all('/api/reminders', handleReminders);
 app.all('/reminders', handleReminders);
+
+app.get('/api/tasks', async (req, res) => {
+  try {
+    const tasks = await db.getAllTasks(req.query);
+    res.json({ success: true, tasks });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 app.get('/api/tasks/:id', async (req, res) => {
   try {
