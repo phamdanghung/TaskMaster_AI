@@ -207,8 +207,9 @@ async function sendDailyReport(ctx) {
 }
 
 async function sendMessage(chatId, text, options = {}) {
-  if (bot && bot.api) {
-    return bot.api.sendMessage(chatId, text, options);
+  const instance = getBotInstance();
+  if (instance && instance.api) {
+    return instance.api.sendMessage(chatId, text, options);
   }
   return null;
 }
