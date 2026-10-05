@@ -105,14 +105,36 @@ Trả về ĐÚNG định dạng JSON thuần túy (không kèm markdown \`\`\`j
     }
   },
 
-  async generateDailySummaryAlert(todayTasks, overdueTasks) {
+  async generateDailySummaryAlert(todayTasks = [], overdueTasks = []) {
+    let rawText = '';
     const model = getGeminiModel();
-    if (!model) {
+    if (model) {
+      try {
+        const prompt = `
+Bạn là trợ lý AI quản lý thời gian cá nhân thân thiện và thúc đẩy động lực.
+Hãy viết 1 tin nhắn thông báo báo cáo công việc ngắn gọn, truyền năng lượng cho người dùng trên Telegram (chỉ dùng thẻ HTML <b>in đậm</b>, <i>in nghiêng</i>, KHÔNG dùng markdown * hoặc **):
+
+Danh sách việc quá hạn (${overdueTasks.length} việc): ${JSON.stringify(overdueTasks)}
+Danh sách việc hôm nay (${todayTasks.length} việc): ${JSON.stringify(todayTasks)}
+
+Highlight việc ưu tiên cao 🔴 và việc quá hạn ⚠️. Chúc người dùng một ngày làm việc tuyệt vời!
+`;
+        const result = await Promise.race([
+          model.generateContent(prompt),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 8000))
+        ]);
+        rawText = result.response.text();
+      } catch (err) {
+        console.error('Gemini error in generateDailySummaryAlert:', err.message);
+      }
+    }
+
+    if (!rawText) {
       let msg = '☀️ <b>BÁO CÁO CÔNG VIỆC BUỔI SÁNG</b>\n\n';
       if (overdueTasks.length > 0) {
         msg += `⚠️ <b>CẢNH BÁO ${overdueTasks.length} VIỆC QUÁ HẠN:</b>\n`;
         overdueTasks.forEach(t => {
-          msg += `• ${t.title} (${t.due_date})\n`;
+          msg += `• ${fallbackEscape(t.title)} (${t.due_date || 'Quá hạn'})\n`;
         });
         msg += '\n';
       }
@@ -123,26 +145,21 @@ Trả về ĐÚNG định dạng JSON thuần túy (không kèm markdown \`\`\`j
       } else {
         todayTasks.forEach((t, i) => {
           const icon = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '🔵';
-          msg += `${i + 1}. ${icon} <b>${t.title}</b> - ${t.due_date || 'Không có hạn'}\n`;
+          msg += `${i + 1}. ${icon} <b>${fallbackEscape(t.title)}</b> - ${t.due_date || 'Không có hạn'}\n`;
         });
       }
       return msg;
     }
 
-    try {
-      const prompt = `
-Bạn là trợ lý AI quản lý thời gian cá nhân thân thiện và thúc đẩy động lực.
-Hãy viết 1 tin nhắn thông báo buổi sáng ngắn gọn, truyền năng lượng cho người dùng trên Telegram (chỉ dùng thẻ HTML <b>in đậm</b>, <i>in nghiêng</i>, KHÔNG dùng markdown *):
+    let sanitized = rawText
+      .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+      .replace(/\*(.*?)\*/g, '<i>$1</i>');
 
-Danh sách việc quá hạn: ${JSON.stringify(overdueTasks)}
-Danh sách việc hôm nay: ${JSON.stringify(todayTasks)}
-
-Highlight việc ưu tiên cao 🔴 và việc quá hạn ⚠️. Chúc người dùng một ngày làm việc tuyệt vời!
-`;
-      const result = await model.generateContent(prompt);
-      return result.response.text();
-    } catch (err) {
-      return '☀️ <b>BÁO CÁO BUỔI SÁNG</b>\n\nChúc bạn một ngày mới tốt lành! Hãy kiểm tra ứng dụng TaskMaster AI để xem công việc nhé.';
-    }
+    return sanitized;
   }
 };
+
+function fallbackEscape(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}

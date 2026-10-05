@@ -15,6 +15,14 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function extractChatId(ctx) {
+  if (!ctx) return null;
+  if (typeof ctx === 'number' || typeof ctx === 'string') return ctx;
+  if (ctx.chat && ctx.chat.id) return ctx.chat.id;
+  if (ctx.message && ctx.message.chat && ctx.message.chat.id) return ctx.message.chat.id;
+  return null;
+}
+
 function getBotInstance(token) {
   const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_TOKEN;
   if (bot) return bot;
@@ -23,40 +31,41 @@ function getBotInstance(token) {
   bot = new Bot(activeToken);
 
   bot.command('start', async (ctx) => {
-    const chatId = ctx.chat.id;
+    const chatId = extractChatId(ctx);
+    if (!chatId) return;
     await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
     process.env.TELEGRAM_CHAT_ID = String(chatId);
     console.log(`🤖 Telegram Chat ID đã được tự động lưu: ${chatId}`);
     const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3000';
 
     const keyboard = [
-      [{ text: '📋 Việc hôm nay', callback_data: 'cmd_today' }, { text: '⏳ Việc chưa xong', callback_data: 'cmd_pending' }]
+      [{ text: '📋 Việc hôm nay', callback_data: 'cmd_today' }, { text: '⏳ Việc chưa xong', callback_data: 'cmd_pending' }],
+      [{ text: '📊 Báo cáo tổng hợp', callback_data: 'cmd_baocao' }]
     ];
     if (webAppUrl.startsWith('https://')) {
       keyboard.unshift([{ text: '📱 Mở Web App Quản Lý', web_app: { url: webAppUrl } }]);
     }
 
-    await ctx.reply(
-      `👋 <b>Chào bạn! TaskMaster AI đã sẵn sàng hỗ trợ bạn.</b>\n\n🆔 <b>Chat ID của bạn:</b> <code>${chatId}</code> <i>(Đã tự động kết nối với Web App!)</i>\n\n📌 <b>Cách dùng cực đơn giản:</b>\n1️⃣ Gửi tin nhắn tiếng Việt bất kỳ (VD: <i>"Nhắc tôi 15h chiều nay họp khẩn với đối tác"</i>).\n2️⃣ Nhấn lệnh /today để xem việc hôm nay.\n3️⃣ Gửi tin nhắn bất kỳ để AI tự động tạo task cho bạn!`, 
+    await sendMessage(chatId,
+      `👋 <b>Chào bạn! TaskMaster AI đã sẵn sàng hỗ trợ bạn.</b>\n\n🆔 <b>Chat ID của bạn:</b> <code>${chatId}</code> <i>(Đã tự động kết nối với Web App!)</i>\n\n📌 <b>Cách dùng cực đơn giản:</b>\n1️⃣ Gửi tin nhắn tiếng Việt bất kỳ (VD: <i>"Nhắc tôi 15h chiều nay họp khẩn với đối tác"</i>).\n2️⃣ Nhấn lệnh /today hoặc /baocao để xem công việc & báo cáo.\n3️⃣ Gửi tin nhắn bất kỳ để AI tự động tạo task cho bạn!`, 
       {
         parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: keyboard
-        }
+        reply_markup: { inline_keyboard: keyboard }
       }
     );
   });
 
   bot.command('app', async (ctx) => {
+    const chatId = extractChatId(ctx);
     const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3000';
     if (webAppUrl.startsWith('https://')) {
-      await ctx.reply('📱 Bấm vào nút bên dưới để mở giao diện quản lý:', {
+      await sendMessage(chatId, '📱 Bấm vào nút bên dưới để mở giao diện quản lý:', {
         reply_markup: {
           inline_keyboard: [[{ text: '🚀 Mở TaskMaster Web App', web_app: { url: webAppUrl } }]]
         }
       });
     } else {
-      await ctx.reply(`📱 Đường dẫn Web App: ${webAppUrl}`);
+      await sendMessage(chatId, `📱 Đường dẫn Web App: ${webAppUrl}`);
     }
   });
 
@@ -68,33 +77,57 @@ function getBotInstance(token) {
 
   bot.on('callback_query', async (ctx) => {
     const data = ctx.callbackQuery ? ctx.callbackQuery.data : '';
+    const chatId = extractChatId(ctx);
 
     if (data.startsWith('done_')) {
       const taskId = data.replace('done_', '');
       await db.markTaskDone(taskId);
-      await ctx.answerCallbackQuery({ text: '✅ Đã hoàn thành công việc!' });
-      await ctx.editMessageText(`✅ <b>Đã đánh dấu hoàn thành công việc!</b>`, { parse_mode: 'HTML' });
+      try { await ctx.answerCallbackQuery({ text: '✅ Đã hoàn thành công việc!' }); } catch (e) {}
+      await sendMessage(chatId, `✅ <b>Đã đánh dấu hoàn thành công việc!</b>`, { parse_mode: 'HTML' });
     } else if (data === 'cmd_today') {
       await sendTodayTasks(ctx);
     } else if (data === 'cmd_pending') {
       await sendPendingTasks(ctx);
+    } else if (data === 'cmd_baocao') {
+      await sendDailyReport(ctx);
     }
   });
 
   bot.on('message', async (ctx) => {
     const text = ctx.message ? ctx.message.text : null;
-    if (text && !text.startsWith('/')) {
-      const chatId = ctx.chat.id;
-      try {
-        await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
-        process.env.TELEGRAM_CHAT_ID = String(chatId);
+    if (!text) return;
 
+    const chatId = extractChatId(ctx);
+    if (chatId) {
+      await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
+      process.env.TELEGRAM_CHAT_ID = String(chatId);
+    }
+
+    const cleanText = text.trim().toLowerCase();
+
+    // Directly handle command keywords with or without leading slash
+    if (['/baocao', 'baocao', 'báo cáo', '/summary', 'summary', '/report', 'report', 'báo cáo công việc'].includes(cleanText)) {
+      await sendDailyReport(ctx);
+      return;
+    }
+    if (['/today', 'today', 'hôm nay', 'việc hôm nay'].includes(cleanText)) {
+      await sendTodayTasks(ctx);
+      return;
+    }
+    if (['/pending', 'pending', 'chưa xong', 'việc chưa xong'].includes(cleanText)) {
+      await sendPendingTasks(ctx);
+      return;
+    }
+
+    // Handle ordinary text -> AI Task Creation
+    if (!text.startsWith('/')) {
+      try {
         const parsed = await aiService.parseTaskFromText(text);
         const newTask = await db.createTask(parsed);
 
         const priorityIcon = newTask.priority === 'high' ? '🔴 Cao' : newTask.priority === 'medium' ? '🟡 Trung bình' : '🔵 Thấp';
 
-        await ctx.reply(
+        await sendMessage(chatId,
           `✅ <b>ĐÃ TẠO CÔNG VIỆC MỚI!</b>\n\n📌 <b>Tiêu đề:</b> ${escapeHtml(newTask.title)}\n🏷️ <b>Phân loại:</b> ${escapeHtml(newTask.category)}\n🔥 <b>Độ ưu tiên:</b> ${priorityIcon}\n📅 <b>Hạn chót:</b> ${escapeHtml(newTask.due_date || 'Không cài đặt')}\n⏰ <b>Thời gian nhắc:</b> ${escapeHtml(newTask.reminder_time || 'Không cài đặt')}`,
           {
             parse_mode: 'HTML',
@@ -107,7 +140,7 @@ function getBotInstance(token) {
         );
       } catch (err) {
         console.error("Error processing Telegram message:", err.message);
-        await ctx.reply(`✅ <b>Đã nhận công việc:</b> ${escapeHtml(text)}`, { parse_mode: 'HTML' });
+        await sendMessage(chatId, `✅ <b>Đã nhận công việc:</b> ${escapeHtml(text)}`, { parse_mode: 'HTML' });
       }
     }
   });
@@ -148,12 +181,13 @@ async function handleWebhookUpdate(update, token) {
 }
 
 async function sendTodayTasks(ctx) {
+  const chatId = extractChatId(ctx);
   const allTasks = await db.getAllTasks();
   const today = new Date().toISOString().split('T')[0];
   const tasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
   
   if (tasks.length === 0) {
-    await ctx.reply('🎉 <b>Hôm nay bạn không có công việc nào cần xử lý!</b>', { parse_mode: 'HTML' });
+    await sendMessage(chatId, '🎉 <b>Hôm nay bạn không có công việc nào cần xử lý!</b>', { parse_mode: 'HTML' });
     return;
   }
 
@@ -166,16 +200,17 @@ async function sendTodayTasks(ctx) {
     keyboard.push([{ text: `✅ Xong: ${t.title.slice(0, 20)}`, callback_data: `done_${t.id}` }]);
   });
 
-  await ctx.reply(msg, {
+  await sendMessage(chatId, msg, {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard }
   });
 }
 
 async function sendPendingTasks(ctx) {
+  const chatId = extractChatId(ctx);
   const tasks = await db.getAllTasks({ status: 'todo' });
   if (tasks.length === 0) {
-    await ctx.reply('🎉 <b>Tất cả công việc đã được hoàn thành!</b>', { parse_mode: 'HTML' });
+    await sendMessage(chatId, '🎉 <b>Tất cả công việc đã được hoàn thành!</b>', { parse_mode: 'HTML' });
     return;
   }
 
@@ -188,22 +223,28 @@ async function sendPendingTasks(ctx) {
     keyboard.push([{ text: `✅ Xong: ${t.title.slice(0, 20)}`, callback_data: `done_${t.id}` }]);
   });
 
-  await ctx.reply(msg, {
+  await sendMessage(chatId, msg, {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard }
   });
 }
 
 async function sendDailyReport(ctx) {
-  const allTasks = await db.getAllTasks();
-  const today = new Date().toISOString().split('T')[0];
-  const now = new Date();
+  const chatId = extractChatId(ctx);
+  try {
+    const allTasks = await db.getAllTasks();
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date();
 
-  const todayTasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
-  const overdueTasks = allTasks.filter(t => t.status !== 'done' && t.due_date && new Date(t.due_date) < now);
+    const todayTasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
+    const overdueTasks = allTasks.filter(t => t.status !== 'done' && t.due_date && new Date(t.due_date) < now);
 
-  const summaryMsg = await aiService.generateDailySummaryAlert(todayTasks, overdueTasks);
-  await ctx.reply(summaryMsg, { parse_mode: 'HTML' });
+    const summaryMsg = await aiService.generateDailySummaryAlert(todayTasks, overdueTasks);
+    await sendMessage(chatId, summaryMsg, { parse_mode: 'HTML' });
+  } catch (err) {
+    console.error("Error in sendDailyReport:", err.message);
+    await sendMessage(chatId, "⚠️ <i>Có lỗi xảy ra khi tạo báo cáo công việc. Vui lòng thử lại sau!</i>", { parse_mode: 'HTML' });
+  }
 }
 
 async function sendMessage(chatId, text, options = {}) {
@@ -217,19 +258,31 @@ async function sendMessage(chatId, text, options = {}) {
 
   try {
     const url = `https://api.telegram.org/bot${activeToken}/sendMessage`;
+    const payload = {
+      chat_id: activeChatId,
+      text: text || '',
+      reply_markup: options.reply_markup
+    };
+    if (options.parse_mode) payload.parse_mode = options.parse_mode;
+
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: activeChatId,
-        text,
-        parse_mode: options.parse_mode || 'HTML',
-        reply_markup: options.reply_markup
-      })
+      body: JSON.stringify(payload)
     });
     const data = await res.json();
     if (!data.ok) {
       console.error("⚠️ Telegram API sendMessage error:", data.description);
+      if (options.parse_mode && data.description) {
+        console.log("Retrying Telegram sendMessage without parse_mode...");
+        delete payload.parse_mode;
+        const retryRes = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        return await retryRes.json();
+      }
     }
     return data;
   } catch (err) {
@@ -242,6 +295,9 @@ module.exports = {
   initBot,
   getBotInstance,
   handleWebhookUpdate,
+  sendDailyReport,
+  sendTodayTasks,
+  sendPendingTasks,
   sendMessage,
   getBot: () => bot
 };
