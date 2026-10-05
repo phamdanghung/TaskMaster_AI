@@ -73,10 +73,11 @@ const handleReminders = async (req, res) => {
 };
 
 app.use((req, res, next) => {
-  if (req.url.includes('daily-summary') || req.path.includes('daily-summary')) {
+  const url = req.url || '';
+  if (url.includes('daily-summary')) {
     return handleDailySummary(req, res);
   }
-  if (req.url.includes('reminders') || req.path.includes('reminders')) {
+  if (url.includes('reminders')) {
     return handleReminders(req, res);
   }
   next();
