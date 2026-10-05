@@ -73,21 +73,21 @@ const handleReminders = async (req, res) => {
 };
 
 app.use((req, res, next) => {
-  const url = req.url || '';
-  if (url.includes('daily-summary')) {
+  const fullUrl = (req.originalUrl || req.url || '').toLowerCase();
+  if (fullUrl.includes('daily-summary')) {
     return handleDailySummary(req, res);
   }
-  if (url.includes('reminders')) {
+  if (fullUrl.includes('reminders')) {
     return handleReminders(req, res);
   }
   next();
 });
 
-app.get('/api/daily-summary', handleDailySummary);
-app.get('/daily-summary', handleDailySummary);
+app.all('/api/daily-summary', handleDailySummary);
+app.all('/daily-summary', handleDailySummary);
 
-app.get('/api/reminders', handleReminders);
-app.get('/reminders', handleReminders);
+app.all('/api/reminders', handleReminders);
+app.all('/reminders', handleReminders);
 
 app.get('/api/tasks/:id', async (req, res) => {
   try {
