@@ -207,11 +207,35 @@ async function sendDailyReport(ctx) {
 }
 
 async function sendMessage(chatId, text, options = {}) {
-  const instance = getBotInstance();
-  if (instance && instance.api) {
-    return instance.api.sendMessage(chatId, text, options);
+  const activeChatId = chatId || process.env.TELEGRAM_CHAT_ID || await db.getSetting('TELEGRAM_CHAT_ID');
+  const activeToken = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
+
+  if (!activeChatId || !activeToken) {
+    console.warn("⚠️ Cannot send Telegram message: missing chatId or token.");
+    return null;
   }
-  return null;
+
+  try {
+    const url = `https://api.telegram.org/bot${activeToken}/sendMessage`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: activeChatId,
+        text,
+        parse_mode: options.parse_mode || 'HTML',
+        reply_markup: options.reply_markup
+      })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      console.error("⚠️ Telegram API sendMessage error:", data.description);
+    }
+    return data;
+  } catch (err) {
+    console.error("⚠️ Error sending Telegram message via fetch:", err.message);
+    return null;
+  }
 }
 
 module.exports = {
