@@ -108,22 +108,22 @@ Trả về ĐÚNG định dạng JSON thuần túy (không kèm markdown \`\`\`j
   async generateDailySummaryAlert(todayTasks, overdueTasks) {
     const model = getGeminiModel();
     if (!model) {
-      let msg = '☀️ *BÁO CÁO CÔNG VIỆC BUỔI SÁNG*\n\n';
+      let msg = '☀️ <b>BÁO CÁO CÔNG VIỆC BUỔI SÁNG</b>\n\n';
       if (overdueTasks.length > 0) {
-        msg += `⚠️ *CẢNH BÁO ${overdueTasks.length} VIỆC QUÁ HẠN:*\n`;
+        msg += `⚠️ <b>CẢNH BÁO ${overdueTasks.length} VIỆC QUÁ HẠN:</b>\n`;
         overdueTasks.forEach(t => {
           msg += `• ${t.title} (${t.due_date})\n`;
         });
         msg += '\n';
       }
 
-      msg += `📋 *DỰ ĐỊNH HÔM NAY (${todayTasks.length} việc):*\n`;
+      msg += `📋 <b>DỰ ĐỊNH HÔM NAY (${todayTasks.length} việc):</b>\n`;
       if (todayTasks.length === 0) {
         msg += '🎉 Bạn không có việc nào đặt lịch hôm nay. Hãy thêm việc mới nếu cần nhé!';
       } else {
         todayTasks.forEach((t, i) => {
           const icon = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '🔵';
-          msg += `${i + 1}. ${icon} *${t.title}* - ${t.due_date || 'Không có hạn'}\n`;
+          msg += `${i + 1}. ${icon} <b>${t.title}</b> - ${t.due_date || 'Không có hạn'}\n`;
         });
       }
       return msg;
@@ -132,7 +132,7 @@ Trả về ĐÚNG định dạng JSON thuần túy (không kèm markdown \`\`\`j
     try {
       const prompt = `
 Bạn là trợ lý AI quản lý thời gian cá nhân thân thiện và thúc đẩy động lực.
-Hãy viết 1 tin nhắn thông báo buổi sáng ngắn gọn, truyền năng lượng cho người dùng trên Telegram (Telegram markdown *bold*):
+Hãy viết 1 tin nhắn thông báo buổi sáng ngắn gọn, truyền năng lượng cho người dùng trên Telegram (chỉ dùng thẻ HTML <b>in đậm</b>, <i>in nghiêng</i>, KHÔNG dùng markdown *):
 
 Danh sách việc quá hạn: ${JSON.stringify(overdueTasks)}
 Danh sách việc hôm nay: ${JSON.stringify(todayTasks)}
@@ -142,7 +142,7 @@ Highlight việc ưu tiên cao 🔴 và việc quá hạn ⚠️. Chúc người
       const result = await model.generateContent(prompt);
       return result.response.text();
     } catch (err) {
-      return '☀️ Chúc bạn một ngày mới tốt lành! Hãy kiểm tra ứng dụng TaskMaster AI để xem công việc nhé.';
+      return '☀️ <b>BÁO CÁO BUỔI SÁNG</b>\n\nChúc bạn một ngày mới tốt lành! Hãy kiểm tra ứng dụng TaskMaster AI để xem công việc nhé.';
     }
   }
 };
