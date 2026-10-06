@@ -27,7 +27,10 @@ function extractChatId(ctx) {
 
 async function ensureWebhook(token) {
   const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
-  const webAppUrl = process.env.WEB_APP_URL || DEFAULT_WEBHOOK_HOST;
+  let webAppUrl = process.env.WEB_APP_URL || DEFAULT_WEBHOOK_HOST;
+  if (!webAppUrl || !webAppUrl.startsWith('https://')) {
+    webAppUrl = DEFAULT_WEBHOOK_HOST;
+  }
   const targetUrl = `${webAppUrl.replace(/\/$/, '')}/api/telegram-webhook`;
 
   try {
