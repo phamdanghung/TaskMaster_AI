@@ -35,7 +35,7 @@ async function ensureWebhook(token) {
     const res = await fetch(`https://api.telegram.org/bot${activeToken}/getWebhookInfo`);
     const data = await res.json();
     if (!data.ok || !data.result || data.result.url !== targetUrl) {
-      console.log(`📌 Registering Telegram Webhook: ${targetUrl}`);
+      console.log(`📌 Auto-registering Telegram Webhook: ${targetUrl}`);
       await fetch(`https://api.telegram.org/bot${activeToken}/setWebhook?url=${encodeURIComponent(targetUrl)}`);
     }
   } catch (e) {
@@ -43,15 +43,20 @@ async function ensureWebhook(token) {
   }
 }
 
+function getVietnamDateString() {
+  const now = new Date();
+  const vnOffset = 7 * 60 * 60 * 1000;
+  const vnDate = new Date(now.getTime() + vnOffset);
+  return vnDate.toISOString().split('T')[0];
+}
+
 async function handleWebhookUpdate(update, token) {
   if (!update) return;
 
-  const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
   const chatId = extractChatId(update);
-
-  if (chatId) {
-    await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
+  if (chatId && process.env.TELEGRAM_CHAT_ID !== String(chatId)) {
     process.env.TELEGRAM_CHAT_ID = String(chatId);
+    db.saveSetting('TELEGRAM_CHAT_ID', String(chatId)).catch(() => {});
   }
 
   // Handle Callback Queries (Button Clicks)
@@ -59,6 +64,7 @@ async function handleWebhookUpdate(update, token) {
     const cb = update.callback_query;
     const data = cb.data || '';
     const cbChatId = cb.message && cb.message.chat ? cb.message.chat.id : chatId;
+    const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_TOKEN;
 
     if (data.startsWith('done_')) {
       const taskId = data.replace('done_', '');
@@ -155,7 +161,7 @@ async function handleWebhookUpdate(update, token) {
 
 async function answerCallbackQuery(callbackQueryId, text = '', token = null) {
   if (!callbackQueryId) return;
-  const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
+  const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_TOKEN;
   try {
     await fetch(`https://api.telegram.org/bot${activeToken}/answerCallbackQuery`, {
       method: 'POST',
@@ -163,13 +169,6 @@ async function answerCallbackQuery(callbackQueryId, text = '', token = null) {
       body: JSON.stringify({ callback_query_id: callbackQueryId, text })
     });
   } catch (e) {}
-}
-
-function getVietnamDateString() {
-  const now = new Date();
-  const vnOffset = 7 * 60 * 60 * 1000;
-  const vnDate = new Date(now.getTime() + vnOffset);
-  return vnDate.toISOString().split('T')[0];
 }
 
 async function sendTodayTasks(ctx) {
