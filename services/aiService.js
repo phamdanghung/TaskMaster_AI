@@ -106,56 +106,50 @@ Trả về ĐÚNG định dạng JSON thuần túy (không kèm markdown \`\`\`j
   },
 
   async generateDailySummaryAlert(todayTasks = [], overdueTasks = []) {
-    let rawText = '';
+    let msg = '☀️ <b>BÁO CÁO CÔNG VIỆC TỔNG HỢP</b>\n\n';
+    
+    if (overdueTasks.length > 0) {
+      msg += `⚠️ <b>CẢNH BÁO ${overdueTasks.length} VIỆC QUÁ HẠN:</b>\n`;
+      overdueTasks.forEach((t, i) => {
+        const icon = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '🔵';
+        msg += `${i + 1}. ${icon} <b>${fallbackEscape(t.title)}</b>\n   📅 Hạn: <code>${t.due_date || 'Quá hạn'}</code>\n`;
+      });
+      msg += '\n';
+    }
+
+    msg += `📋 <b>DỰ ĐỊNH HÔM NAY (${todayTasks.length} việc):</b>\n`;
+    if (todayTasks.length === 0) {
+      msg += '🎉 <i>Bạn không có việc nào cần xử lý hôm nay. Thêm công việc mới nếu cần nhé!</i>\n';
+    } else {
+      todayTasks.forEach((t, i) => {
+        const icon = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '🔵';
+        msg += `${i + 1}. ${icon} <b>${fallbackEscape(t.title)}</b>\n   ⏰ Hạn: <code>${t.due_date || 'Trong ngày'}</code>\n`;
+      });
+    }
+
     const model = getGeminiModel();
     if (model) {
       try {
-        const prompt = `
-Bạn là trợ lý AI quản lý thời gian cá nhân thân thiện và thúc đẩy động lực.
-Hãy viết 1 tin nhắn thông báo báo cáo công việc ngắn gọn, truyền năng lượng cho người dùng trên Telegram (chỉ dùng thẻ HTML <b>in đậm</b>, <i>in nghiêng</i>, KHÔNG dùng markdown * hoặc **):
-
-Danh sách việc quá hạn (${overdueTasks.length} việc): ${JSON.stringify(overdueTasks)}
-Danh sách việc hôm nay (${todayTasks.length} việc): ${JSON.stringify(todayTasks)}
-
-Highlight việc ưu tiên cao 🔴 và việc quá hạn ⚠️. Chúc người dùng một ngày làm việc tuyệt vời!
-`;
+        const prompt = `Viết 1 câu chúc ngày mới truyền động lực cực ngắn gọn bằng tiếng Việt (tối đa 15 từ, chỉ dùng thẻ <i>in nghiêng</i>, không dùng markdown *).`;
         const result = await Promise.race([
           model.generateContent(prompt),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Gemini timeout')), 8000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
         ]);
-        rawText = result.response.text();
-      } catch (err) {
-        console.error('Gemini error in generateDailySummaryAlert:', err.message);
+        const quote = result.response.text().trim();
+        if (quote) {
+          const cleanQuote = quote.replace(/<[^>]*>/g, '').replace(/[\*\_]/g, '');
+          msg += `\n💡 <i>${fallbackEscape(cleanQuote)}</i>`;
+        } else {
+          msg += `\n💪 <i>Chúc bạn một ngày làm việc năng suất và tràn đầy năng lượng!</i>`;
+        }
+      } catch (e) {
+        msg += `\n💪 <i>Chúc bạn một ngày làm việc năng suất và tràn đầy năng lượng!</i>`;
       }
+    } else {
+      msg += `\n💪 <i>Chúc bạn một ngày làm việc năng suất và tràn đầy năng lượng!</i>`;
     }
 
-    if (!rawText) {
-      let msg = '☀️ <b>BÁO CÁO CÔNG VIỆC BUỔI SÁNG</b>\n\n';
-      if (overdueTasks.length > 0) {
-        msg += `⚠️ <b>CẢNH BÁO ${overdueTasks.length} VIỆC QUÁ HẠN:</b>\n`;
-        overdueTasks.forEach(t => {
-          msg += `• ${fallbackEscape(t.title)} (${t.due_date || 'Quá hạn'})\n`;
-        });
-        msg += '\n';
-      }
-
-      msg += `📋 <b>DỰ ĐỊNH HÔM NAY (${todayTasks.length} việc):</b>\n`;
-      if (todayTasks.length === 0) {
-        msg += '🎉 Bạn không có việc nào đặt lịch hôm nay. Hãy thêm việc mới nếu cần nhé!';
-      } else {
-        todayTasks.forEach((t, i) => {
-          const icon = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '🔵';
-          msg += `${i + 1}. ${icon} <b>${fallbackEscape(t.title)}</b> - ${t.due_date || 'Không có hạn'}\n`;
-        });
-      }
-      return msg;
-    }
-
-    let sanitized = rawText
-      .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
-      .replace(/\*(.*?)\*/g, '<i>$1</i>');
-
-    return sanitized;
+    return msg;
   }
 };
 
