@@ -20,6 +20,7 @@ function extractChatId(ctx) {
   if (typeof ctx === 'number' || typeof ctx === 'string') return ctx;
   if (ctx.chat && ctx.chat.id) return ctx.chat.id;
   if (ctx.message && ctx.message.chat && ctx.message.chat.id) return ctx.message.chat.id;
+  if (ctx.update && ctx.update.message && ctx.update.message.chat && ctx.update.message.chat.id) return ctx.update.message.chat.id;
   return null;
 }
 
@@ -176,7 +177,25 @@ async function initBot() {
 async function handleWebhookUpdate(update, token) {
   const instance = getBotInstance(token);
   if (instance && instance.handleUpdate) {
-    await instance.handleUpdate(update);
+    try { await instance.handleUpdate(update); } catch (e) {}
+  }
+
+  // Direct fail-proof update handling fallback
+  if (update && update.message && update.message.text) {
+    const text = update.message.text.trim().toLowerCase();
+    const chatId = extractChatId(update);
+    if (chatId) {
+      await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
+      process.env.TELEGRAM_CHAT_ID = String(chatId);
+
+      if (['/baocao', 'baocao', 'báo cáo', '/summary', 'summary', '/report', 'report', 'báo cáo công việc'].includes(text)) {
+        await sendDailyReport(chatId);
+      } else if (['/today', 'today', 'hôm nay', 'việc hôm nay'].includes(text)) {
+        await sendTodayTasks(chatId);
+      } else if (['/pending', 'pending', 'chưa xong', 'việc chưa xong'].includes(text)) {
+        await sendPendingTasks(chatId);
+      }
+    }
   }
 }
 
@@ -187,8 +206,7 @@ async function sendTodayTasks(ctx) {
   const tasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
   
   if (tasks.length === 0) {
-    await sendMessage(chatId, '🎉 <b>Hôm nay bạn không có công việc nào cần xử lý!</b>', { parse_mode: 'HTML' });
-    return;
+    return await sendMessage(chatId, '🎉 <b>Hôm nay bạn không có công việc nào cần xử lý!</b>', { parse_mode: 'HTML' });
   }
 
   let msg = `📋 <b>DANH SÁCH VIỆC HÔM NAY (${tasks.length} việc):</b>\n\n`;
@@ -200,7 +218,7 @@ async function sendTodayTasks(ctx) {
     keyboard.push([{ text: `✅ Xong: ${t.title.slice(0, 20)}`, callback_data: `done_${t.id}` }]);
   });
 
-  await sendMessage(chatId, msg, {
+  return await sendMessage(chatId, msg, {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard }
   });
@@ -210,8 +228,7 @@ async function sendPendingTasks(ctx) {
   const chatId = extractChatId(ctx);
   const tasks = await db.getAllTasks({ status: 'todo' });
   if (tasks.length === 0) {
-    await sendMessage(chatId, '🎉 <b>Tất cả công việc đã được hoàn thành!</b>', { parse_mode: 'HTML' });
-    return;
+    return await sendMessage(chatId, '🎉 <b>Tất cả công việc đã được hoàn thành!</b>', { parse_mode: 'HTML' });
   }
 
   let msg = `⏳ <b>DANH SÁCH CÔNG VIỆC ĐANG CHỜ (${tasks.length} việc):</b>\n\n`;
@@ -223,7 +240,7 @@ async function sendPendingTasks(ctx) {
     keyboard.push([{ text: `✅ Xong: ${t.title.slice(0, 20)}`, callback_data: `done_${t.id}` }]);
   });
 
-  await sendMessage(chatId, msg, {
+  return await sendMessage(chatId, msg, {
     parse_mode: 'HTML',
     reply_markup: { inline_keyboard: keyboard }
   });
@@ -240,10 +257,10 @@ async function sendDailyReport(ctx) {
     const overdueTasks = allTasks.filter(t => t.status !== 'done' && t.due_date && new Date(t.due_date) < now);
 
     const summaryMsg = await aiService.generateDailySummaryAlert(todayTasks, overdueTasks);
-    await sendMessage(chatId, summaryMsg, { parse_mode: 'HTML' });
+    return await sendMessage(chatId, summaryMsg, { parse_mode: 'HTML' });
   } catch (err) {
     console.error("Error in sendDailyReport:", err.message);
-    await sendMessage(chatId, "⚠️ <i>Có lỗi xảy ra khi tạo báo cáo công việc. Vui lòng thử lại sau!</i>", { parse_mode: 'HTML' });
+    return await sendMessage(chatId, "⚠️ <i>Có lỗi xảy ra khi tạo báo cáo công việc. Vui lòng thử lại sau!</i>", { parse_mode: 'HTML' });
   }
 }
 
