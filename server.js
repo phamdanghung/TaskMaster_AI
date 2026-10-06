@@ -63,10 +63,8 @@ const handleReminders = async (req, res) => {
   }
 };
 
-app.all('/api/daily-summary', handleDailySummary);
-app.all('/daily-summary', handleDailySummary);
-app.all('/api/reminders', handleReminders);
-app.all('/reminders', handleReminders);
+app.all(['/api/daily-summary*', '/daily-summary*'], handleDailySummary);
+app.all(['/api/reminders*', '/reminders*'], handleReminders);
 
 app.get('/api/tasks', async (req, res) => {
   try {
