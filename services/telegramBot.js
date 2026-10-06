@@ -5,6 +5,7 @@ const aiService = require('./aiService');
 let bot = null;
 
 const DEFAULT_TOKEN = '8696351743:AAGewjwkS3D2CyC8UB1Yd5z42VfpEGwIpWs';
+const DEFAULT_WEBHOOK_HOST = 'https://task-master-ai-beta-sand.vercel.app';
 
 function escapeHtml(str) {
   if (!str) return '';
@@ -24,6 +25,23 @@ function extractChatId(ctx) {
   return null;
 }
 
+async function ensureWebhook(token) {
+  const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
+  const webAppUrl = process.env.WEB_APP_URL || DEFAULT_WEBHOOK_HOST;
+  const targetUrl = `${webAppUrl.replace(/\/$/, '')}/api/telegram-webhook`;
+
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${activeToken}/getWebhookInfo`);
+    const data = await res.json();
+    if (data.ok && data.result && data.result.url !== targetUrl) {
+      console.log(`📌 Auto-registering Telegram Webhook: ${targetUrl}`);
+      await fetch(`https://api.telegram.org/bot${activeToken}/setWebhook?url=${encodeURIComponent(targetUrl)}`);
+    }
+  } catch (e) {
+    console.error("⚠️ Error ensuring Telegram Webhook:", e.message);
+  }
+}
+
 function getBotInstance(token) {
   const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_TOKEN;
   if (bot) return bot;
@@ -37,7 +55,7 @@ function getBotInstance(token) {
     await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
     process.env.TELEGRAM_CHAT_ID = String(chatId);
     console.log(`🤖 Telegram Chat ID đã được tự động lưu: ${chatId}`);
-    const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3000';
+    const webAppUrl = process.env.WEB_APP_URL || DEFAULT_WEBHOOK_HOST;
 
     const keyboard = [
       [{ text: '📋 Việc hôm nay', callback_data: 'cmd_today' }, { text: '⏳ Việc chưa xong', callback_data: 'cmd_pending' }],
@@ -58,7 +76,7 @@ function getBotInstance(token) {
 
   bot.command('app', async (ctx) => {
     const chatId = extractChatId(ctx);
-    const webAppUrl = process.env.WEB_APP_URL || 'http://localhost:3000';
+    const webAppUrl = process.env.WEB_APP_URL || DEFAULT_WEBHOOK_HOST;
     if (webAppUrl.startsWith('https://')) {
       await sendMessage(chatId, '📱 Bấm vào nút bên dưới để mở giao diện quản lý:', {
         reply_markup: {
@@ -150,12 +168,8 @@ function getBotInstance(token) {
 }
 
 async function initBot() {
-  if (bot) {
-    try { bot.stop(); } catch (e) {}
-    bot = null;
-  }
-
-  const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN');
+  bot = null;
+  const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
   if (!token || token.includes('your_telegram_bot_token')) {
     console.log('⚠️ Telegram Bot Token chưa được cấu hình.');
     return null;
@@ -163,6 +177,7 @@ async function initBot() {
 
   try {
     const instance = getBotInstance(token);
+    await ensureWebhook(token);
     if (!process.env.VERCEL && process.env.USE_POLLING === 'true') {
       try { instance.startPolling(); } catch (e) {}
     }
@@ -324,5 +339,6 @@ module.exports = {
   sendTodayTasks,
   sendPendingTasks,
   sendMessage,
+  ensureWebhook,
   getBot: () => bot
 };
