@@ -127,28 +127,7 @@ Trả về ĐÚNG định dạng JSON thuần túy (không kèm markdown \`\`\`j
       });
     }
 
-    const model = getGeminiModel();
-    if (model) {
-      try {
-        const prompt = `Viết 1 câu chúc ngày mới truyền động lực cực ngắn gọn bằng tiếng Việt (tối đa 15 từ, chỉ dùng thẻ <i>in nghiêng</i>, không dùng markdown *).`;
-        const result = await Promise.race([
-          model.generateContent(prompt),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
-        ]);
-        const quote = result.response.text().trim();
-        if (quote) {
-          const cleanQuote = quote.replace(/<[^>]*>/g, '').replace(/[\*\_]/g, '');
-          msg += `\n💡 <i>${fallbackEscape(cleanQuote)}</i>`;
-        } else {
-          msg += `\n💪 <i>Chúc bạn một ngày làm việc năng suất và tràn đầy năng lượng!</i>`;
-        }
-      } catch (e) {
-        msg += `\n💪 <i>Chúc bạn một ngày làm việc năng suất và tràn đầy năng lượng!</i>`;
-      }
-    } else {
-      msg += `\n💪 <i>Chúc bạn một ngày làm việc năng suất và tràn đầy năng lượng!</i>`;
-    }
-
+    msg += `\n💪 <i>Chúc bạn một ngày làm việc năng suất và tràn đầy năng lượng!</i>`;
     return msg;
   }
 };
