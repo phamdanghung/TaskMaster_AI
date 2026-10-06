@@ -1,8 +1,5 @@
-const { Bot } = require('node-telegram-bot-api');
 const db = require('./db');
 const aiService = require('./aiService');
-
-let bot = null;
 
 const DEFAULT_TOKEN = '8696351743:AAGewjwkS3D2CyC8UB1Yd5z42VfpEGwIpWs';
 const DEFAULT_WEBHOOK_HOST = 'https://task-master-ai-beta-sand.vercel.app';
@@ -21,7 +18,8 @@ function extractChatId(ctx) {
   if (typeof ctx === 'number' || typeof ctx === 'string') return ctx;
   if (ctx.chat && ctx.chat.id) return ctx.chat.id;
   if (ctx.message && ctx.message.chat && ctx.message.chat.id) return ctx.message.chat.id;
-  if (ctx.update && ctx.update.message && ctx.update.message.chat && ctx.update.message.chat.id) return ctx.update.message.chat.id;
+  if (ctx.callback_query && ctx.callback_query.message && ctx.callback_query.message.chat) return ctx.callback_query.message.chat.id;
+  if (ctx.update) return extractChatId(ctx.update);
   return null;
 }
 
@@ -36,8 +34,8 @@ async function ensureWebhook(token) {
   try {
     const res = await fetch(`https://api.telegram.org/bot${activeToken}/getWebhookInfo`);
     const data = await res.json();
-    if (data.ok && data.result && data.result.url !== targetUrl) {
-      console.log(`📌 Auto-registering Telegram Webhook: ${targetUrl}`);
+    if (!data.ok || !data.result || data.result.url !== targetUrl) {
+      console.log(`📌 Registering Telegram Webhook: ${targetUrl}`);
       await fetch(`https://api.telegram.org/bot${activeToken}/setWebhook?url=${encodeURIComponent(targetUrl)}`);
     }
   } catch (e) {
@@ -45,108 +43,97 @@ async function ensureWebhook(token) {
   }
 }
 
-function getBotInstance(token) {
-  const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || DEFAULT_TOKEN;
-  if (bot) return bot;
-  if (!activeToken) return null;
+async function handleWebhookUpdate(update, token) {
+  if (!update) return;
 
-  bot = new Bot(activeToken);
+  const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
+  const chatId = extractChatId(update);
 
-  bot.command('start', async (ctx) => {
-    const chatId = extractChatId(ctx);
-    if (!chatId) return;
+  if (chatId) {
     await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
     process.env.TELEGRAM_CHAT_ID = String(chatId);
-    console.log(`🤖 Telegram Chat ID đã được tự động lưu: ${chatId}`);
-    const webAppUrl = process.env.WEB_APP_URL || DEFAULT_WEBHOOK_HOST;
+  }
 
-    const keyboard = [
-      [{ text: '📋 Việc hôm nay', callback_data: 'cmd_today' }, { text: '⏳ Việc chưa xong', callback_data: 'cmd_pending' }],
-      [{ text: '📊 Báo cáo tổng hợp', callback_data: 'cmd_baocao' }]
-    ];
-    if (webAppUrl.startsWith('https://')) {
-      keyboard.unshift([{ text: '📱 Mở Web App Quản Lý', web_app: { url: webAppUrl } }]);
-    }
-
-    await sendMessage(chatId,
-      `👋 <b>Chào bạn! TaskMaster AI đã sẵn sàng hỗ trợ bạn.</b>\n\n🆔 <b>Chat ID của bạn:</b> <code>${chatId}</code> <i>(Đã tự động kết nối với Web App!)</i>\n\n📌 <b>Cách dùng cực đơn giản:</b>\n1️⃣ Gửi tin nhắn tiếng Việt bất kỳ (VD: <i>"Nhắc tôi 15h chiều nay họp khẩn với đối tác"</i>).\n2️⃣ Nhấn lệnh /today hoặc /baocao để xem công việc & báo cáo.\n3️⃣ Gửi tin nhắn bất kỳ để AI tự động tạo task cho bạn!`, 
-      {
-        parse_mode: 'HTML',
-        reply_markup: { inline_keyboard: keyboard }
-      }
-    );
-  });
-
-  bot.command('app', async (ctx) => {
-    const chatId = extractChatId(ctx);
-    const webAppUrl = process.env.WEB_APP_URL || DEFAULT_WEBHOOK_HOST;
-    if (webAppUrl.startsWith('https://')) {
-      await sendMessage(chatId, '📱 Bấm vào nút bên dưới để mở giao diện quản lý:', {
-        reply_markup: {
-          inline_keyboard: [[{ text: '🚀 Mở TaskMaster Web App', web_app: { url: webAppUrl } }]]
-        }
-      });
-    } else {
-      await sendMessage(chatId, `📱 Đường dẫn Web App: ${webAppUrl}`);
-    }
-  });
-
-  bot.command('today', async (ctx) => { await sendTodayTasks(ctx); });
-  bot.command('pending', async (ctx) => { await sendPendingTasks(ctx); });
-  bot.command('baocao', async (ctx) => { await sendDailyReport(ctx); });
-  bot.command('summary', async (ctx) => { await sendDailyReport(ctx); });
-  bot.command('report', async (ctx) => { await sendDailyReport(ctx); });
-
-  bot.on('callback_query', async (ctx) => {
-    const data = ctx.callbackQuery ? ctx.callbackQuery.data : '';
-    const chatId = extractChatId(ctx);
+  // Handle Callback Queries (Button Clicks)
+  if (update.callback_query) {
+    const cb = update.callback_query;
+    const data = cb.data || '';
+    const cbChatId = cb.message && cb.message.chat ? cb.message.chat.id : chatId;
 
     if (data.startsWith('done_')) {
       const taskId = data.replace('done_', '');
       await db.markTaskDone(taskId);
-      try { await ctx.answerCallbackQuery({ text: '✅ Đã hoàn thành công việc!' }); } catch (e) {}
-      await sendMessage(chatId, `✅ <b>Đã đánh dấu hoàn thành công việc!</b>`, { parse_mode: 'HTML' });
+      await answerCallbackQuery(cb.id, '✅ Đã hoàn thành công việc!', activeToken);
+      await sendMessage(cbChatId, `✅ <b>Đã đánh dấu hoàn thành công việc!</b>`, { parse_mode: 'HTML' });
+      return;
     } else if (data === 'cmd_today') {
-      await sendTodayTasks(ctx);
+      await answerCallbackQuery(cb.id, '', activeToken);
+      await sendTodayTasks(cbChatId);
+      return;
     } else if (data === 'cmd_pending') {
-      await sendPendingTasks(ctx);
+      await answerCallbackQuery(cb.id, '', activeToken);
+      await sendPendingTasks(cbChatId);
+      return;
     } else if (data === 'cmd_baocao') {
-      await sendDailyReport(ctx);
-    }
-  });
-
-  bot.on('message', async (ctx) => {
-    const text = ctx.message ? ctx.message.text : null;
-    if (!text) return;
-
-    const chatId = extractChatId(ctx);
-    if (chatId) {
-      await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
-      process.env.TELEGRAM_CHAT_ID = String(chatId);
-    }
-
-    const cleanText = text.trim().toLowerCase();
-
-    // Directly handle command keywords with or without leading slash
-    if (['/baocao', 'baocao', 'báo cáo', '/summary', 'summary', '/report', 'report', 'báo cáo công việc'].includes(cleanText)) {
-      await sendDailyReport(ctx);
+      await answerCallbackQuery(cb.id, '', activeToken);
+      await sendDailyReport(cbChatId);
       return;
     }
-    if (['/today', 'today', 'hôm nay', 'việc hôm nay'].includes(cleanText)) {
-      await sendTodayTasks(ctx);
-      return;
-    }
-    if (['/pending', 'pending', 'chưa xong', 'việc chưa xong'].includes(cleanText)) {
-      await sendPendingTasks(ctx);
+  }
+
+  // Handle Text Messages & Commands
+  if (update.message && update.message.text && chatId) {
+    const text = update.message.text.trim();
+    const cleanCmd = text.toLowerCase().split('@')[0];
+
+    if (cleanCmd === '/start') {
+      const webAppUrl = process.env.WEB_APP_URL || DEFAULT_WEBHOOK_HOST;
+      const keyboard = [
+        [{ text: '📋 Việc hôm nay', callback_data: 'cmd_today' }, { text: '⏳ Việc chưa xong', callback_data: 'cmd_pending' }],
+        [{ text: '📊 Báo cáo tổng hợp', callback_data: 'cmd_baocao' }]
+      ];
+      if (webAppUrl.startsWith('https://')) {
+        keyboard.unshift([{ text: '📱 Mở Web App Quản Lý', web_app: { url: webAppUrl } }]);
+      }
+      await sendMessage(chatId,
+        `👋 <b>Chào bạn! TaskMaster AI đã sẵn sàng hỗ trợ bạn.</b>\n\n🆔 <b>Chat ID của bạn:</b> <code>${chatId}</code> <i>(Đã tự động kết nối với Web App!)</i>\n\n📌 <b>Cách dùng cực đơn giản:</b>\n1️⃣ Gửi tin nhắn tiếng Việt bất kỳ (VD: <i>"Nhắc tôi 15h chiều nay họp khẩn với đối tác"</i>).\n2️⃣ Nhấn lệnh /today hoặc /baocao để xem công việc & báo cáo.\n3️⃣ Gửi tin nhắn bất kỳ để AI tự động tạo task cho bạn!`, 
+        { parse_mode: 'HTML', reply_markup: { inline_keyboard: keyboard } }
+      );
       return;
     }
 
-    // Handle ordinary text -> AI Task Creation
+    if (cleanCmd === '/app') {
+      const webAppUrl = process.env.WEB_APP_URL || DEFAULT_WEBHOOK_HOST;
+      if (webAppUrl.startsWith('https://')) {
+        await sendMessage(chatId, '📱 Bấm vào nút bên dưới để mở giao diện quản lý:', {
+          reply_markup: { inline_keyboard: [[{ text: '🚀 Mở TaskMaster Web App', web_app: { url: webAppUrl } }]] }
+        });
+      } else {
+        await sendMessage(chatId, `📱 Đường dẫn Web App: ${webAppUrl}`);
+      }
+      return;
+    }
+
+    if (['/baocao', 'baocao', 'báo cáo', '/summary', 'summary', '/report', 'report', 'báo cáo công việc'].includes(cleanCmd)) {
+      await sendDailyReport(chatId);
+      return;
+    }
+
+    if (['/today', 'today', 'hôm nay', 'việc hôm nay'].includes(cleanCmd)) {
+      await sendTodayTasks(chatId);
+      return;
+    }
+
+    if (['/pending', 'pending', 'chưa xong', 'việc chưa xong'].includes(cleanCmd)) {
+      await sendPendingTasks(chatId);
+      return;
+    }
+
+    // Standard Text -> AI Task Creation
     if (!text.startsWith('/')) {
       try {
         const parsed = await aiService.parseTaskFromText(text);
         const newTask = await db.createTask(parsed);
-
         const priorityIcon = newTask.priority === 'high' ? '🔴 Cao' : newTask.priority === 'medium' ? '🟡 Trung bình' : '🔵 Thấp';
 
         await sendMessage(chatId,
@@ -154,9 +141,7 @@ function getBotInstance(token) {
           {
             parse_mode: 'HTML',
             reply_markup: {
-              inline_keyboard: [
-                [{ text: '✅ Đánh dấu xong', callback_data: `done_${newTask.id}` }]
-              ]
+              inline_keyboard: [[{ text: '✅ Đánh dấu xong', callback_data: `done_${newTask.id}` }]]
             }
           }
         );
@@ -165,64 +150,19 @@ function getBotInstance(token) {
         await sendMessage(chatId, `✅ <b>Đã nhận công việc:</b> ${escapeHtml(text)}`, { parse_mode: 'HTML' });
       }
     }
-  });
-
-  return bot;
+  }
 }
 
-async function initBot() {
-  bot = null;
-  const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
-  if (!token || token.includes('your_telegram_bot_token')) {
-    console.log('⚠️ Telegram Bot Token chưa được cấu hình.');
-    return null;
-  }
-
+async function answerCallbackQuery(callbackQueryId, text = '', token = null) {
+  if (!callbackQueryId) return;
+  const activeToken = token || process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
   try {
-    const instance = getBotInstance(token);
-    await ensureWebhook(token);
-    if (!process.env.VERCEL && process.env.USE_POLLING === 'true') {
-      try { instance.startPolling(); } catch (e) {}
-    }
-    console.log('🤖 Telegram Bot đã khởi chạy thành công!');
-  } catch (err) {
-    console.error('Error starting Telegram Bot:', err.message);
-  }
-
-  return bot;
-}
-
-async function handleWebhookUpdate(update, token) {
-  if (!update) return;
-
-  const chatId = extractChatId(update);
-  if (chatId) {
-    await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
-    process.env.TELEGRAM_CHAT_ID = String(chatId);
-  }
-
-  const text = (update.message && update.message.text) ? update.message.text.trim() : null;
-  if (text && chatId) {
-    const cleanCmd = text.toLowerCase().split('@')[0];
-
-    if (['/baocao', 'baocao', 'báo cáo', '/summary', 'summary', '/report', 'report', 'báo cáo công việc'].includes(cleanCmd)) {
-      await sendDailyReport(chatId);
-      return;
-    }
-    if (['/today', 'today', 'hôm nay', 'việc hôm nay'].includes(cleanCmd)) {
-      await sendTodayTasks(chatId);
-      return;
-    }
-    if (['/pending', 'pending', 'chưa xong', 'việc chưa xong'].includes(cleanCmd)) {
-      await sendPendingTasks(chatId);
-      return;
-    }
-  }
-
-  const instance = getBotInstance(token);
-  if (instance && instance.handleUpdate) {
-    try { await instance.handleUpdate(update); } catch (e) {}
-  }
+    await fetch(`https://api.telegram.org/bot${activeToken}/answerCallbackQuery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callback_query_id: callbackQueryId, text })
+    });
+  } catch (e) {}
 }
 
 async function sendTodayTasks(ctx) {
@@ -334,14 +274,20 @@ async function sendMessage(chatId, text, options = {}) {
   }
 }
 
+async function initBot() {
+  const token = process.env.TELEGRAM_BOT_TOKEN || await db.getSetting('TELEGRAM_BOT_TOKEN') || DEFAULT_TOKEN;
+  await ensureWebhook(token);
+  console.log('🤖 Telegram Bot đã kết nối thành công!');
+  return true;
+}
+
 module.exports = {
   initBot,
-  getBotInstance,
+  getBotInstance: () => null,
   handleWebhookUpdate,
   sendDailyReport,
   sendTodayTasks,
   sendPendingTasks,
   sendMessage,
-  ensureWebhook,
-  getBot: () => bot
+  ensureWebhook
 };
