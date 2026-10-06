@@ -165,10 +165,17 @@ async function answerCallbackQuery(callbackQueryId, text = '', token = null) {
   } catch (e) {}
 }
 
+function getVietnamDateString() {
+  const now = new Date();
+  const vnOffset = 7 * 60 * 60 * 1000;
+  const vnDate = new Date(now.getTime() + vnOffset);
+  return vnDate.toISOString().split('T')[0];
+}
+
 async function sendTodayTasks(ctx) {
   const chatId = extractChatId(ctx);
   const allTasks = await db.getAllTasks();
-  const today = new Date().toISOString().split('T')[0];
+  const today = getVietnamDateString();
   const tasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
   
   if (tasks.length === 0) {
@@ -216,11 +223,11 @@ async function sendDailyReport(ctx) {
   const chatId = extractChatId(ctx);
   try {
     const allTasks = await db.getAllTasks();
-    const today = new Date().toISOString().split('T')[0];
+    const today = getVietnamDateString();
     const now = new Date();
 
     const todayTasks = allTasks.filter(t => t.due_date && t.due_date.startsWith(today));
-    const overdueTasks = allTasks.filter(t => t.status !== 'done' && t.due_date && new Date(t.due_date) < now);
+    const overdueTasks = allTasks.filter(t => t.status !== 'done' && t.due_date && !t.due_date.startsWith(today) && new Date(t.due_date) < now);
 
     const summaryMsg = await aiService.generateDailySummaryAlert(todayTasks, overdueTasks);
     return await sendMessage(chatId, summaryMsg, { parse_mode: 'HTML' });
