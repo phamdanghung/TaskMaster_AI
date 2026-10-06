@@ -175,27 +175,35 @@ async function initBot() {
 }
 
 async function handleWebhookUpdate(update, token) {
+  if (!update) return;
+
+  const chatId = extractChatId(update);
+  if (chatId) {
+    await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
+    process.env.TELEGRAM_CHAT_ID = String(chatId);
+  }
+
+  const text = (update.message && update.message.text) ? update.message.text.trim() : null;
+  if (text && chatId) {
+    const cleanCmd = text.toLowerCase().split('@')[0];
+
+    if (['/baocao', 'baocao', 'báo cáo', '/summary', 'summary', '/report', 'report', 'báo cáo công việc'].includes(cleanCmd)) {
+      await sendDailyReport(chatId);
+      return;
+    }
+    if (['/today', 'today', 'hôm nay', 'việc hôm nay'].includes(cleanCmd)) {
+      await sendTodayTasks(chatId);
+      return;
+    }
+    if (['/pending', 'pending', 'chưa xong', 'việc chưa xong'].includes(cleanCmd)) {
+      await sendPendingTasks(chatId);
+      return;
+    }
+  }
+
   const instance = getBotInstance(token);
   if (instance && instance.handleUpdate) {
     try { await instance.handleUpdate(update); } catch (e) {}
-  }
-
-  // Direct fail-proof update handling fallback
-  if (update && update.message && update.message.text) {
-    const text = update.message.text.trim().toLowerCase();
-    const chatId = extractChatId(update);
-    if (chatId) {
-      await db.saveSetting('TELEGRAM_CHAT_ID', String(chatId));
-      process.env.TELEGRAM_CHAT_ID = String(chatId);
-
-      if (['/baocao', 'baocao', 'báo cáo', '/summary', 'summary', '/report', 'report', 'báo cáo công việc'].includes(text)) {
-        await sendDailyReport(chatId);
-      } else if (['/today', 'today', 'hôm nay', 'việc hôm nay'].includes(text)) {
-        await sendTodayTasks(chatId);
-      } else if (['/pending', 'pending', 'chưa xong', 'việc chưa xong'].includes(text)) {
-        await sendPendingTasks(chatId);
-      }
-    }
   }
 }
 
