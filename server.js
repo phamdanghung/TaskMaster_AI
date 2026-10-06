@@ -208,8 +208,12 @@ app.all('/api/set-telegram-webhook', async (req, res) => {
       `);
     }
 
-    const instance = telegramBot.getBotInstance(token);
-    await instance.api.setWebhook(webhookUrl);
+    const setRes = await fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(webhookUrl)}`);
+    const setData = await setRes.json();
+
+    if (!setData.ok) {
+      return res.status(400).json({ success: false, error: setData.description });
+    }
 
     if (req.headers.accept && req.headers.accept.includes('text/html')) {
       res.send(`
