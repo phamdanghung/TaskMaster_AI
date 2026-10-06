@@ -121,18 +121,15 @@ async function handleWebhookUpdate(update, token) {
     }
 
     if (['/baocao', 'baocao', 'báo cáo', '/summary', 'summary', '/report', 'report', 'báo cáo công việc'].includes(cleanCmd)) {
-      await sendDailyReport(chatId);
-      return;
+      return await sendDailyReport(chatId);
     }
 
     if (['/today', 'today', 'hôm nay', 'việc hôm nay'].includes(cleanCmd)) {
-      await sendTodayTasks(chatId);
-      return;
+      return await sendTodayTasks(chatId);
     }
 
     if (['/pending', 'pending', 'chưa xong', 'việc chưa xong'].includes(cleanCmd)) {
-      await sendPendingTasks(chatId);
-      return;
+      return await sendPendingTasks(chatId);
     }
 
     // Standard Text -> AI Task Creation
